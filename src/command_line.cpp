@@ -69,6 +69,15 @@ CommandLineOptions parseCommandLine(
             options.config.interactive = true;
             continue;
         }
+        if (argument == "--log-directory") {
+            if (++index == arguments.size() || arguments[index].empty()) {
+                throw std::invalid_argument(
+                    "--log-directory requires a value"
+                );
+            }
+            options.config.logDirectory = arguments[index];
+            continue;
+        }
         if (
             argument == "--open-announcements" ||
             argument == "--closed-announcements"
@@ -121,6 +130,7 @@ std::string commandLineUsage(std::string_view executableName) {
         "  --closed-announcements   Hide roles and night details (default)\n"
         "  --full-log               Print every accepted action\n"
         "  --brief-log              Print only main events (default)\n"
+        "  --log-directory PATH     File log directory (default: logs)\n"
         "  --help, -h               Show this help\n";
 }
 

@@ -276,6 +276,7 @@ void testMafiaAlwaysReachesACommonTarget() {
         }
     }
     assert(confirmedMafiaActions == 2);
+    assert(result.actionHistory.size() == result.actions.size() + 1);
 }
 
 void testMafiaReceivesOtherPlayersProposals() {
@@ -343,6 +344,7 @@ void testMafiaReceivesOtherPlayersProposals() {
     assert(firstStrategy->discussionOptions() == twoOptions);
     assert(secondStrategy->discussionOptions() == twoOptions);
     assert(thirdStrategy->discussionOptions() == oneOption);
+    assert(result.actionHistory.size() == result.actions.size() + 3);
 }
 
 }  // namespace

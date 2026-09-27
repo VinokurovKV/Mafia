@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace mafia {
@@ -56,6 +57,7 @@ struct GameConfig {
     bool interactive = false;
     AnnouncementMode announcementMode = AnnouncementMode::Closed;
     LogLevel logLevel = LogLevel::Brief;
+    std::string logDirectory = "logs";
 };
 
 struct PlayerState {
@@ -107,6 +109,7 @@ struct InvestigationResult {
 struct StepResult {
     std::vector<PlayerId> eliminated;
     std::vector<Action> actions;
+    std::vector<Action> actionHistory;
     std::optional<PlayerId> mafiaTarget;
     bool mafiaConsensusRequired = false;
     std::vector<InvestigationResult> investigations;

@@ -6,7 +6,9 @@ include(CTest)
 
 add_executable(mafia
     src/command_line.cpp
+    src/console_strategy.cpp
     src/game.cpp
+    src/game_logger.cpp
     src/host.cpp
     src/main.cpp
     src/player.cpp
@@ -39,6 +41,50 @@ if (BUILD_TESTING)
     endif()
 
     add_test(NAME command_line_tests COMMAND command_line_tests)
+
+    add_executable(
+        console_strategy_tests
+        tests/console_strategy_tests.cpp
+        src/console_strategy.cpp
+    )
+    target_include_directories(console_strategy_tests PRIVATE include)
+    target_compile_features(console_strategy_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(console_strategy_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(console_strategy_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME console_strategy_tests COMMAND console_strategy_tests)
+
+    add_executable(
+        game_logger_tests
+        tests/game_logger_tests.cpp
+        src/game_logger.cpp
+    )
+    target_include_directories(game_logger_tests PRIVATE include)
+    target_compile_features(game_logger_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(game_logger_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(game_logger_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME game_logger_tests COMMAND game_logger_tests)
+
+    add_executable(role_concepts_tests tests/role_concepts_tests.cpp)
+    target_include_directories(role_concepts_tests PRIVATE include)
+    target_compile_features(role_concepts_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(role_concepts_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(role_concepts_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME role_concepts_tests COMMAND role_concepts_tests)
 
     add_executable(shared_ptr_tests tests/shared_ptr_tests.cpp)
     target_include_directories(shared_ptr_tests PRIVATE include)
@@ -126,7 +172,9 @@ if (BUILD_TESTING)
     add_executable(
         game_voting_tests
         tests/game_voting_tests.cpp
+        src/console_strategy.cpp
         src/game.cpp
+        src/game_logger.cpp
         src/host.cpp
         src/player.cpp
         src/random_strategy.cpp
@@ -146,7 +194,9 @@ if (BUILD_TESTING)
     add_executable(
         game_cycle_tests
         tests/game_cycle_tests.cpp
+        src/console_strategy.cpp
         src/game.cpp
+        src/game_logger.cpp
         src/host.cpp
         src/player.cpp
         src/random_strategy.cpp
@@ -166,7 +216,9 @@ if (BUILD_TESTING)
     add_executable(
         game_creation_tests
         tests/game_creation_tests.cpp
+        src/console_strategy.cpp
         src/game.cpp
+        src/game_logger.cpp
         src/host.cpp
         src/player.cpp
         src/random_strategy.cpp

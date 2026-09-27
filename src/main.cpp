@@ -21,12 +21,6 @@ int main(int argc, char* argv[]) {
             std::cout << mafia::commandLineUsage(argv[0]);
             return 0;
         }
-        if (options.config.interactive) {
-            std::cerr
-                << "Interactive mode is not implemented yet.\n";
-            return 2;
-        }
-
         mafia::Game game(options.config);
         game.run();
     } catch (const std::exception& error) {

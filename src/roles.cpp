@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "mafia/role_concepts.hpp"
+
 namespace mafia {
 namespace {
 
@@ -24,8 +26,9 @@ ActionType actionTypeForPhase(
     );
 }
 
+template <PlayerRole Role>
 Action makeTargetedAction(
-    Player& player,
+    Role& player,
     DecisionStrategy& strategy,
     const TurnContext& context,
     ActionType type

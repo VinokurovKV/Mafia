@@ -118,6 +118,7 @@ StepResult Host::conductVoting(
             return left.actor < right.actor;
         }
     );
+    result.actionHistory = result.actions;
     if (selectedPlayer.has_value() && !tied) {
         result.eliminated.push_back(*selectedPlayer);
     }
@@ -191,6 +192,19 @@ StepResult Host::conductNight(
     }
 
     CollectedActions collected = collectActions(request, assignments);
+    std::vector<Action> actionHistory;
+    actionHistory.reserve(collected.actions.size());
+    for (const auto& [actor, action] : collected.actions) {
+        static_cast<void>(actor);
+        actionHistory.push_back(action);
+    }
+    std::sort(
+        actionHistory.begin(),
+        actionHistory.end(),
+        [](const Action& left, const Action& right) {
+            return left.actor < right.actor;
+        }
+    );
 
     std::vector<TurnAssignment> mafiaAssignments;
     for (const TurnAssignment& assignment : assignments) {
@@ -274,6 +288,7 @@ StepResult Host::conductNight(
                     );
                 }
 
+                actionHistory.push_back(action->second);
                 collected.actions[assignment.player->id()] = action->second;
                 collected.completedAt = discussed.completedAt;
                 mafiaTarget = commonMafiaTarget();
@@ -286,6 +301,7 @@ StepResult Host::conductNight(
 
     StepResult result;
     result.completedAt = collected.completedAt;
+    result.actionHistory = std::move(actionHistory);
     result.mafiaTarget = mafiaTarget;
     result.mafiaConsensusRequired = mafiaConsensusRequired;
     for (const auto& [actor, action] : collected.actions) {

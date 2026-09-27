@@ -35,6 +35,8 @@ int main() {
         "--interactive",
         "--open-announcements",
         "--full-log",
+        "--log-directory",
+        "test-logs",
     });
     assert(full.config.playerCount == 12);
     assert(full.config.mafiaDivisor == 4);
@@ -43,6 +45,7 @@ int main() {
         full.config.announcementMode == mafia::AnnouncementMode::Open
     );
     assert(full.config.logLevel == mafia::LogLevel::Full);
+    assert(full.config.logDirectory == "test-logs");
 
     const mafia::CommandLineOptions defaults = parse({"--players", "5"});
     assert(!defaults.config.interactive);
@@ -50,6 +53,7 @@ int main() {
         defaults.config.announcementMode == mafia::AnnouncementMode::Closed
     );
     assert(defaults.config.logLevel == mafia::LogLevel::Brief);
+    assert(defaults.config.logDirectory == "logs");
 
     assert(parse({"--help"}).showHelp);
     assert(throwsInvalidArgument([] { parse({}); }));
@@ -59,6 +63,9 @@ int main() {
     }));
     assert(throwsInvalidArgument([] {
         parse({"--players", "10", "--unknown"});
+    }));
+    assert(throwsInvalidArgument([] {
+        parse({"--players", "10", "--log-directory"});
     }));
     assert(throwsInvalidArgument([] {
         parse({

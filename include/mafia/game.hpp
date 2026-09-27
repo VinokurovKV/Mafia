@@ -8,7 +8,9 @@
 #include <vector>
 
 #include "mafia/host.hpp"
+#include "mafia/game_logger.hpp"
 #include "mafia/player.hpp"
+#include "mafia/role_concepts.hpp"
 #include "mafia/shared_ptr.hpp"
 #include "mafia/types.hpp"
 
@@ -23,7 +25,7 @@ public:
     );
     explicit Game(GameConfig config);
 
-    template <typename Role>
+    template <PlayerRole Role>
     void addPlayer(
         PlayerId id,
         std::string name,
@@ -73,6 +75,7 @@ private:
         const StepResult& result
     ) const;
     void announceWinner() const;
+    void startFileLogging();
     std::string playerName(PlayerId id) const;
     std::string disclosedStatus(PlayerId id) const;
 
@@ -89,6 +92,8 @@ private:
     StepId nextStepId = 1;
     GameConfig config;
     bool outputEnabled = false;
+    std::optional<PlayerId> humanPlayerId;
+    std::optional<GameLogger> gameLogger;
 };
 
 }  // namespace mafia

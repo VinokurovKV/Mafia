@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "mafia/console_strategy.hpp"
 #include "mafia/random_strategy.hpp"
 #include "mafia/roles.hpp"
 
@@ -119,7 +120,13 @@ Game::Game(GameConfig configValue)
     for (std::size_t index = 0; index < roles.size(); ++index) {
         const PlayerId id = index + 1;
         const std::string name = "Player " + std::to_string(id);
-        SharedPtr<DecisionStrategy> strategy(new RandomStrategy());
+        SharedPtr<DecisionStrategy> strategy;
+        if (config.interactive && id == 1) {
+            strategy.reset(new ConsoleStrategy(std::cin, std::cout));
+            humanPlayerId = id;
+        } else {
+            strategy.reset(new RandomStrategy());
+        }
 
         switch (roles[index]) {
             case RoleType::Mafia:
@@ -146,6 +153,7 @@ void Game::run() {
         return;
     }
 
+    startFileLogging();
     announceGameStart();
 
     try {
@@ -158,6 +166,13 @@ void Game::run() {
                 {nextStepId++, GamePhase::Voting},
                 snapshot()
             );
+            if (gameLogger.has_value()) {
+                gameLogger->logStep(
+                    state.round,
+                    GamePhase::Voting,
+                    votingResult
+                );
+            }
             announceStepResult(GamePhase::Voting, votingResult);
             applyStepResult(votingResult);
 
@@ -171,6 +186,13 @@ void Game::run() {
                 {nextStepId++, GamePhase::Night},
                 snapshot()
             );
+            if (gameLogger.has_value()) {
+                gameLogger->logStep(
+                    state.round,
+                    GamePhase::Night,
+                    nightResult
+                );
+            }
             announceStepResult(GamePhase::Night, nightResult);
             applyStepResult(nightResult);
 
@@ -180,6 +202,9 @@ void Game::run() {
         }
 
         state.phase = GamePhase::Finished;
+        if (gameLogger.has_value()) {
+            gameLogger->finishGame(*state.winner, state.players);
+        }
         announceWinner();
     } catch (...) {
         stopPlayerThreads();
@@ -334,12 +359,46 @@ void Game::announceGameStart() const {
         << (config.logLevel == LogLevel::Full ? "full" : "brief")
         << "\n";
 
-    if (config.logLevel == LogLevel::Full) {
+    if (gameLogger.has_value()) {
+        std::cout
+            << "File logs: "
+            << gameLogger->sessionDirectory().string() << "\n";
+    }
+
+    if (
+        config.logLevel == LogLevel::Full &&
+        config.announcementMode == AnnouncementMode::Open
+    ) {
         std::cout << "Role distribution:\n";
         for (const SharedPtr<Player>& player : players) {
             std::cout
                 << "  " << player->name() << " (#" << player->id() << "): "
                 << roleName(player->role()) << '\n';
+        }
+    }
+
+    if (humanPlayerId.has_value()) {
+        const RoleType humanRole = roleOf(*humanPlayerId);
+        std::cout
+            << "You control " << playerName(*humanPlayerId) << ".\n"
+            << "Your role: " << roleName(humanRole) << ".\n";
+
+        if (humanRole == RoleType::Mafia) {
+            std::cout << "Your mafia teammates:";
+            bool hasTeammates = false;
+            for (const SharedPtr<Player>& player : players) {
+                if (
+                    player->id() != *humanPlayerId &&
+                    player->role() == RoleType::Mafia
+                ) {
+                    std::cout << ' ' << playerName(player->id());
+                    hasTeammates = true;
+                }
+            }
+            if (!hasTeammates) {
+                std::cout << " none";
+            }
+            std::cout << "\n";
         }
     }
 }
@@ -376,7 +435,10 @@ void Game::announceStepResult(
         std::cout
             << "Accepted actions (last received at "
             << formatTime(result.completedAt) << "):\n";
-        for (const Action& action : result.actions) {
+        const std::vector<Action>& history = result.actionHistory.empty()
+            ? result.actions
+            : result.actionHistory;
+        for (const Action& action : history) {
             std::cout
                 << "  " << playerName(action.actor) << ' '
                 << actionName(action.type) << ' '
@@ -393,6 +455,19 @@ void Game::announceStepResult(
             std::cout
                 << "  " << actionName(action.type) << ' '
                 << playerName(action.target) << '\n';
+        }
+    }
+
+    if (humanPlayerId.has_value()) {
+        for (const InvestigationResult& investigation : result.investigations) {
+            if (investigation.investigator != *humanPlayerId) {
+                continue;
+            }
+            std::cout
+                << "Your investigation: "
+                << playerName(investigation.target) << " is "
+                << (investigation.targetIsMafia ? "mafia" : "not mafia")
+                << ".\n";
         }
     }
 
@@ -443,6 +518,25 @@ void Game::announceWinner() const {
     std::cout
         << "\n=== Game finished ===\n"
         << "Winner: " << winnerName(*state.winner) << "\n";
+}
+
+void Game::startFileLogging() {
+    if (!outputEnabled || gameLogger.has_value()) {
+        return;
+    }
+
+    std::vector<LoggedPlayer> loggedPlayers;
+    loggedPlayers.reserve(players.size());
+    for (const SharedPtr<Player>& player : players) {
+        loggedPlayers.push_back({
+            player->id(),
+            player->name(),
+            player->role(),
+        });
+    }
+
+    gameLogger.emplace(config.logDirectory);
+    gameLogger->startGame(std::move(loggedPlayers));
 }
 
 std::string Game::playerName(PlayerId id) const {
