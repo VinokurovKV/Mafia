@@ -1,5 +1,6 @@
 CXX := g++
 CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -pthread -Iinclude
+RUN_ARGS ?= --players 10 --closed-announcements --brief-log
 
 ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
@@ -20,10 +21,17 @@ TEST_TARGET := shared_ptr_tests$(EXECUTABLE_SUFFIX)
 PLAYER_TEST_TARGET := player_tests$(EXECUTABLE_SUFFIX)
 ROLE_TEST_TARGET := role_tests$(EXECUTABLE_SUFFIX)
 HOST_TEST_TARGET := host_voting_tests$(EXECUTABLE_SUFFIX)
+NIGHT_TEST_TARGET := host_night_tests$(EXECUTABLE_SUFFIX)
 GAME_TEST_TARGET := game_voting_tests$(EXECUTABLE_SUFFIX)
-SOURCES := src/main.cpp src/game.cpp src/host.cpp src/player.cpp src/roles.cpp
+GAME_CYCLE_TEST_TARGET := game_cycle_tests$(EXECUTABLE_SUFFIX)
+GAME_CREATION_TEST_TARGET := game_creation_tests$(EXECUTABLE_SUFFIX)
+COMMAND_LINE_TEST_TARGET := command_line_tests$(EXECUTABLE_SUFFIX)
+SOURCES := src/main.cpp src/command_line.cpp src/game.cpp src/host.cpp src/player.cpp \
+	src/random_strategy.cpp src/roles.cpp
 BINARIES := $(TARGET) $(TEST_TARGET) $(PLAYER_TEST_TARGET) $(ROLE_TEST_TARGET) \
-	$(HOST_TEST_TARGET) $(GAME_TEST_TARGET)
+	$(HOST_TEST_TARGET) $(NIGHT_TEST_TARGET) $(GAME_TEST_TARGET) \
+	$(GAME_CYCLE_TEST_TARGET) $(GAME_CREATION_TEST_TARGET) \
+	$(COMMAND_LINE_TEST_TARGET)
 CLEAN_COMMAND := $(CLEAN_PROGRAM) $(BINARIES)
 
 .PHONY: all run test check clean
@@ -50,31 +58,59 @@ $(HOST_TEST_TARGET): tests/host_voting_tests.cpp src/host.cpp src/player.cpp src
 	@$(ECHO) Building Host voting tests...
 	@$(CXX) $(CXXFLAGS) tests/host_voting_tests.cpp src/host.cpp src/player.cpp src/roles.cpp -o $(HOST_TEST_TARGET)
 
-$(GAME_TEST_TARGET): tests/game_voting_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/roles.cpp
-	@$(ECHO) Building Game voting tests...
-	@$(CXX) $(CXXFLAGS) tests/game_voting_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/roles.cpp -o $(GAME_TEST_TARGET)
+$(NIGHT_TEST_TARGET): tests/host_night_tests.cpp src/host.cpp src/player.cpp src/roles.cpp
+	@$(ECHO) Building Host night tests...
+	@$(CXX) $(CXXFLAGS) tests/host_night_tests.cpp src/host.cpp src/player.cpp src/roles.cpp -o $(NIGHT_TEST_TARGET)
 
-test: $(TEST_TARGET) $(PLAYER_TEST_TARGET) $(ROLE_TEST_TARGET) $(HOST_TEST_TARGET) $(GAME_TEST_TARGET)
-	@$(ECHO) [1/5] SharedPtr tests...
+$(GAME_TEST_TARGET): tests/game_voting_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp
+	@$(ECHO) Building Game voting tests...
+	@$(CXX) $(CXXFLAGS) tests/game_voting_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp -o $(GAME_TEST_TARGET)
+
+$(GAME_CYCLE_TEST_TARGET): tests/game_cycle_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp
+	@$(ECHO) Building Game cycle tests...
+	@$(CXX) $(CXXFLAGS) tests/game_cycle_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp -o $(GAME_CYCLE_TEST_TARGET)
+
+$(GAME_CREATION_TEST_TARGET): tests/game_creation_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp
+	@$(ECHO) Building Game creation tests...
+	@$(CXX) $(CXXFLAGS) tests/game_creation_tests.cpp src/game.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp -o $(GAME_CREATION_TEST_TARGET)
+
+$(COMMAND_LINE_TEST_TARGET): tests/command_line_tests.cpp src/command_line.cpp
+	@$(ECHO) Building command line tests...
+	@$(CXX) $(CXXFLAGS) tests/command_line_tests.cpp src/command_line.cpp -o $(COMMAND_LINE_TEST_TARGET)
+
+test: $(TEST_TARGET) $(PLAYER_TEST_TARGET) $(ROLE_TEST_TARGET) $(HOST_TEST_TARGET) $(NIGHT_TEST_TARGET) $(GAME_TEST_TARGET) $(GAME_CYCLE_TEST_TARGET) $(GAME_CREATION_TEST_TARGET) $(COMMAND_LINE_TEST_TARGET)
+	@$(ECHO) [1/9] SharedPtr tests...
 	@$(RUN_PREFIX)$(TEST_TARGET)
-	@$(ECHO) [1/5] SharedPtr tests: OK
-	@$(ECHO) [2/5] Player tests...
+	@$(ECHO) [1/9] SharedPtr tests: OK
+	@$(ECHO) [2/9] Player tests...
 	@$(RUN_PREFIX)$(PLAYER_TEST_TARGET)
-	@$(ECHO) [2/5] Player tests: OK
-	@$(ECHO) [3/5] Role tests...
+	@$(ECHO) [2/9] Player tests: OK
+	@$(ECHO) [3/9] Role tests...
 	@$(RUN_PREFIX)$(ROLE_TEST_TARGET)
-	@$(ECHO) [3/5] Role tests: OK
-	@$(ECHO) [4/5] Host voting tests...
+	@$(ECHO) [3/9] Role tests: OK
+	@$(ECHO) [4/9] Host voting tests...
 	@$(RUN_PREFIX)$(HOST_TEST_TARGET)
-	@$(ECHO) [4/5] Host voting tests: OK
-	@$(ECHO) [5/5] Game voting tests...
+	@$(ECHO) [4/9] Host voting tests: OK
+	@$(ECHO) [5/9] Host night tests...
+	@$(RUN_PREFIX)$(NIGHT_TEST_TARGET)
+	@$(ECHO) [5/9] Host night tests: OK
+	@$(ECHO) [6/9] Game voting tests...
 	@$(RUN_PREFIX)$(GAME_TEST_TARGET)
-	@$(ECHO) [5/5] Game voting tests: OK
+	@$(ECHO) [6/9] Game voting tests: OK
+	@$(ECHO) [7/9] Game cycle tests...
+	@$(RUN_PREFIX)$(GAME_CYCLE_TEST_TARGET)
+	@$(ECHO) [7/9] Game cycle tests: OK
+	@$(ECHO) [8/9] Game creation tests...
+	@$(RUN_PREFIX)$(GAME_CREATION_TEST_TARGET)
+	@$(ECHO) [8/9] Game creation tests: OK
+	@$(ECHO) [9/9] Command line tests...
+	@$(RUN_PREFIX)$(COMMAND_LINE_TEST_TARGET)
+	@$(ECHO) [9/9] Command line tests: OK
 	@$(ECHO) All tests passed.
 
 run: $(TARGET)
 	@$(ECHO) Running application...
-	@$(RUN_PREFIX)$(TARGET)
+	@$(RUN_PREFIX)$(TARGET) $(RUN_ARGS)
 
 check: test run
 

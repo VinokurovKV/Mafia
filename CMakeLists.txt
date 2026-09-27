@@ -5,10 +5,12 @@ project(mafia LANGUAGES CXX)
 include(CTest)
 
 add_executable(mafia
+    src/command_line.cpp
     src/game.cpp
     src/host.cpp
     src/main.cpp
     src/player.cpp
+    src/random_strategy.cpp
     src/roles.cpp
 )
 
@@ -22,6 +24,22 @@ else()
 endif()
 
 if (BUILD_TESTING)
+    add_executable(
+        command_line_tests
+        tests/command_line_tests.cpp
+        src/command_line.cpp
+    )
+    target_include_directories(command_line_tests PRIVATE include)
+    target_compile_features(command_line_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(command_line_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(command_line_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME command_line_tests COMMAND command_line_tests)
+
     add_executable(shared_ptr_tests tests/shared_ptr_tests.cpp)
     target_include_directories(shared_ptr_tests PRIVATE include)
     target_compile_features(shared_ptr_tests PRIVATE cxx_std_20)
@@ -88,11 +106,30 @@ if (BUILD_TESTING)
     add_test(NAME host_voting_tests COMMAND host_voting_tests)
 
     add_executable(
+        host_night_tests
+        tests/host_night_tests.cpp
+        src/host.cpp
+        src/player.cpp
+        src/roles.cpp
+    )
+    target_include_directories(host_night_tests PRIVATE include)
+    target_compile_features(host_night_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(host_night_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(host_night_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME host_night_tests COMMAND host_night_tests)
+
+    add_executable(
         game_voting_tests
         tests/game_voting_tests.cpp
         src/game.cpp
         src/host.cpp
         src/player.cpp
+        src/random_strategy.cpp
         src/roles.cpp
     )
     target_include_directories(game_voting_tests PRIVATE include)
@@ -105,4 +142,44 @@ if (BUILD_TESTING)
     endif()
 
     add_test(NAME game_voting_tests COMMAND game_voting_tests)
+
+    add_executable(
+        game_cycle_tests
+        tests/game_cycle_tests.cpp
+        src/game.cpp
+        src/host.cpp
+        src/player.cpp
+        src/random_strategy.cpp
+        src/roles.cpp
+    )
+    target_include_directories(game_cycle_tests PRIVATE include)
+    target_compile_features(game_cycle_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(game_cycle_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(game_cycle_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME game_cycle_tests COMMAND game_cycle_tests)
+
+    add_executable(
+        game_creation_tests
+        tests/game_creation_tests.cpp
+        src/game.cpp
+        src/host.cpp
+        src/player.cpp
+        src/random_strategy.cpp
+        src/roles.cpp
+    )
+    target_include_directories(game_creation_tests PRIVATE include)
+    target_compile_features(game_creation_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(game_creation_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(game_creation_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME game_creation_tests COMMAND game_creation_tests)
 endif()

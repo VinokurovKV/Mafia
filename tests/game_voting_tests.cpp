@@ -57,7 +57,8 @@ int main() {
     game.run();
 
     const mafia::GameSnapshot snapshot = game.snapshot();
-    assert(snapshot.phase == mafia::GamePhase::Voting);
+    assert(snapshot.phase == mafia::GamePhase::Finished);
+    assert(snapshot.winner == mafia::Winner::Civilians);
     assert(isAlive(snapshot, 1));
     assert(isAlive(snapshot, 2));
     assert(!isAlive(snapshot, 3));

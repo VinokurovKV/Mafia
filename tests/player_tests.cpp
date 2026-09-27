@@ -40,6 +40,10 @@ public:
         return action;
     }
 
+    mafia::RoleType role() const noexcept override {
+        return mafia::RoleType::Civilian;
+    }
+
 private:
     std::promise<mafia::Action> actionPromise_;
 };
@@ -59,7 +63,12 @@ int main() {
     auto actionFuture = player.actionFuture();
     std::thread playerThread(&mafia::Player::run, &player);
 
-    player.requestTurn({10, mafia::GamePhase::Voting, {2, 3}});
+    player.requestTurn({
+        10,
+        mafia::GamePhase::Voting,
+        {2, 3},
+        {mafia::ActionType::Vote},
+    });
 
     assert(
         actionFuture.wait_for(std::chrono::seconds(1)) ==

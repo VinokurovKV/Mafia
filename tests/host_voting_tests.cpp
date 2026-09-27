@@ -52,6 +52,8 @@ void testPlayerWithMostVotesIsEliminated() {
         1,
         mafia::GamePhase::Voting,
         {{1, true}, {2, true}, {3, true}, {4, false}},
+        std::nullopt,
+        std::nullopt,
     };
     const mafia::StepResult result = host.conductStep(
         {100, mafia::GamePhase::Voting},
@@ -90,6 +92,8 @@ void testTieEliminatesNobody() {
         1,
         mafia::GamePhase::Voting,
         {{1, true}, {2, true}, {3, true}, {4, true}},
+        std::nullopt,
+        std::nullopt,
     };
     const mafia::StepResult result = host.conductStep(
         {101, mafia::GamePhase::Voting},

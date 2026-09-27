@@ -25,6 +25,7 @@ public:
     virtual ~Player() = default;
 
     virtual Action makeAction(const TurnContext& context) = 0;
+    virtual RoleType role() const noexcept = 0;
 
     PlayerId id() const noexcept;
     const std::string& name() const noexcept;

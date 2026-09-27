@@ -1,5 +1,6 @@
 #include "mafia/roles.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string_view>
 
@@ -52,6 +53,10 @@ Action Mafia::makeAction(const TurnContext& context) {
     );
 }
 
+RoleType Mafia::role() const noexcept {
+    return RoleType::Mafia;
+}
+
 Action Civilian::makeAction(const TurnContext& context) {
     if (context.phase != GamePhase::Voting) {
         throw std::logic_error("Civilian can act only during voting");
@@ -65,6 +70,10 @@ Action Civilian::makeAction(const TurnContext& context) {
     );
 }
 
+RoleType Civilian::role() const noexcept {
+    return RoleType::Civilian;
+}
+
 Action Doctor::makeAction(const TurnContext& context) {
     return makeTargetedAction(
         *this,
@@ -74,17 +83,49 @@ Action Doctor::makeAction(const TurnContext& context) {
     );
 }
 
+RoleType Doctor::role() const noexcept {
+    return RoleType::Doctor;
+}
+
 Action Commissioner::makeAction(const TurnContext& context) {
+    ActionType actionType = ActionType::Vote;
+    if (context.phase == GamePhase::Night) {
+        actionType = strategy().chooseActionType(context);
+        if (
+            actionType != ActionType::Check &&
+            actionType != ActionType::Shoot
+        ) {
+            throw std::logic_error(
+                "Commissioner must choose Check or Shoot at night"
+            );
+        }
+        if (
+            std::find(
+                context.availableActions.begin(),
+                context.availableActions.end(),
+                actionType
+            ) == context.availableActions.end()
+        ) {
+            throw std::logic_error(
+                "Commissioner selected an unavailable action"
+            );
+        }
+    } else if (context.phase != GamePhase::Voting) {
+        throw std::logic_error(
+            "Commissioner cannot act during the current phase"
+        );
+    }
+
     return makeTargetedAction(
         *this,
         strategy(),
         context,
-        actionTypeForPhase(
-            context.phase,
-            ActionType::Check,
-            "Commissioner"
-        )
+        actionType
     );
+}
+
+RoleType Commissioner::role() const noexcept {
+    return RoleType::Commissioner;
 }
 
 Action Maniac::makeAction(const TurnContext& context) {
@@ -98,6 +139,10 @@ Action Maniac::makeAction(const TurnContext& context) {
             "Maniac"
         )
     );
+}
+
+RoleType Maniac::role() const noexcept {
+    return RoleType::Maniac;
 }
 
 }  // namespace mafia

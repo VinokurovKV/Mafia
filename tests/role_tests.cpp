@@ -37,7 +37,12 @@ void expectAction(
     mafia::SharedPtr<mafia::DecisionStrategy> strategy(strategyValue);
     Role role(actor, "Player", strategy, host);
 
-    const mafia::Action action = role.makeAction({42, phase, {7, 8}});
+    const mafia::Action action = role.makeAction({
+        42,
+        phase,
+        {7, 8},
+        {expectedType},
+    });
 
     assert(action.stepId == 42);
     assert(action.actor == actor);
@@ -68,7 +73,12 @@ void testCivilianCannotActAtNight() {
 
     bool exceptionThrown = false;
     try {
-        static_cast<void>(civilian.makeAction({42, mafia::GamePhase::Night, {7}}));
+        static_cast<void>(civilian.makeAction({
+            42,
+            mafia::GamePhase::Night,
+            {7},
+            {},
+        }));
     } catch (const std::logic_error&) {
         exceptionThrown = true;
     }

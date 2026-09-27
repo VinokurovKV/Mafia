@@ -16,6 +16,13 @@ namespace mafia {
 
 class Game {
 public:
+    Game() = default;
+    explicit Game(
+        std::size_t playerCount,
+        std::size_t mafiaDivisor = 3
+    );
+    explicit Game(GameConfig config);
+
     template <typename Role>
     void addPlayer(
         PlayerId id,
@@ -52,18 +59,36 @@ public:
 
     void run();
     GameSnapshot snapshot() const;
+    RoleType roleOf(PlayerId id) const;
 
 private:
     void startPlayerThreads();
     void stopPlayerThreads() noexcept;
     void applyStepResult(const StepResult& result);
-    bool checkVictory() const;
+    bool checkVictory();
+    void announceGameStart() const;
+    void announcePhase(GamePhase phase) const;
+    void announceStepResult(
+        GamePhase phase,
+        const StepResult& result
+    ) const;
+    void announceWinner() const;
+    std::string playerName(PlayerId id) const;
+    std::string disclosedStatus(PlayerId id) const;
 
-    GameState state{1, GamePhase::Day, {}};
+    GameState state{
+        1,
+        GamePhase::Day,
+        {},
+        std::nullopt,
+        std::nullopt,
+    };
     Host host;
     std::vector<SharedPtr<Player>> players;
     std::vector<std::thread> playerThreads;
     StepId nextStepId = 1;
+    GameConfig config;
+    bool outputEnabled = false;
 };
 
 }  // namespace mafia
