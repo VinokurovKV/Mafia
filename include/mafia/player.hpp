@@ -1,25 +1,21 @@
 #pragma once
 
-#include <condition_variable>
-#include <mutex>
 #include <optional>
 #include <string>
 
 #include "mafia/decision_strategy.hpp"
+#include "mafia/player_task.hpp"
 #include "mafia/shared_ptr.hpp"
 #include "mafia/types.hpp"
 
 namespace mafia {
-
-class Host;
 
 class Player {
 public:
     Player(
         PlayerId id,
         std::string name,
-        SharedPtr<DecisionStrategy> strategy,
-        Host& host
+        SharedPtr<DecisionStrategy> strategy
     );
 
     virtual ~Player() = default;
@@ -29,25 +25,23 @@ public:
 
     PlayerId id() const noexcept;
     const std::string& name() const noexcept;
+    bool isInteractive() const noexcept;
 
     void requestTurn(TurnContext context);
-    void run();
-    void stop();
+    Action performTurn();
 
 protected:
     DecisionStrategy& strategy() noexcept;
     const DecisionStrategy& strategy() const noexcept;
 
 private:
+    PlayerTask actionLoop();
+
     PlayerId id_;
     std::string name_;
     SharedPtr<DecisionStrategy> strategy_;
-    Host& host_;
-
-    std::mutex turnMutex_;
-    std::condition_variable turnAvailable_;
     std::optional<TurnContext> pendingTurn_;
-    bool stopped_ = false;
+    PlayerTask actionTask_;
 };
 
 }  // namespace mafia

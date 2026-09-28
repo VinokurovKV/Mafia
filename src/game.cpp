@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <random>
+#include <ranges>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -115,7 +116,7 @@ Game::Game(GameConfig configValue)
     );
 
     std::mt19937 generator(std::random_device{}());
-    std::shuffle(roles.begin(), roles.end(), generator);
+    std::ranges::shuffle(roles, generator);
 
     for (std::size_t index = 0; index < roles.size(); ++index) {
         const PlayerId id = index + 1;
@@ -156,62 +157,53 @@ void Game::run() {
     startFileLogging();
     announceGameStart();
 
-    try {
-        startPlayerThreads();
-
-        while (!checkVictory()) {
-            state.phase = GamePhase::Voting;
-            announcePhase(GamePhase::Voting);
-            const StepResult votingResult = host.conductStep(
-                {nextStepId++, GamePhase::Voting},
-                snapshot()
-            );
-            if (gameLogger.has_value()) {
-                gameLogger->logStep(
-                    state.round,
-                    GamePhase::Voting,
-                    votingResult
-                );
-            }
-            announceStepResult(GamePhase::Voting, votingResult);
-            applyStepResult(votingResult);
-
-            if (checkVictory()) {
-                break;
-            }
-
-            state.phase = GamePhase::Night;
-            announcePhase(GamePhase::Night);
-            const StepResult nightResult = host.conductStep(
-                {nextStepId++, GamePhase::Night},
-                snapshot()
-            );
-            if (gameLogger.has_value()) {
-                gameLogger->logStep(
-                    state.round,
-                    GamePhase::Night,
-                    nightResult
-                );
-            }
-            announceStepResult(GamePhase::Night, nightResult);
-            applyStepResult(nightResult);
-
-            if (!checkVictory()) {
-                ++state.round;
-            }
-        }
-
-        state.phase = GamePhase::Finished;
+    while (!checkVictory()) {
+        state.phase = GamePhase::Voting;
+        announcePhase(GamePhase::Voting);
+        const StepResult votingResult = host.conductStep(
+            {nextStepId++, GamePhase::Voting},
+            snapshot()
+        );
         if (gameLogger.has_value()) {
-            gameLogger->finishGame(*state.winner, state.players);
+            gameLogger->logStep(
+                state.round,
+                GamePhase::Voting,
+                votingResult
+            );
         }
-        announceWinner();
-    } catch (...) {
-        stopPlayerThreads();
-        throw;
+        announceStepResult(GamePhase::Voting, votingResult);
+        applyStepResult(votingResult);
+
+        if (checkVictory()) {
+            break;
+        }
+
+        state.phase = GamePhase::Night;
+        announcePhase(GamePhase::Night);
+        const StepResult nightResult = host.conductStep(
+            {nextStepId++, GamePhase::Night},
+            snapshot()
+        );
+        if (gameLogger.has_value()) {
+            gameLogger->logStep(
+                state.round,
+                GamePhase::Night,
+                nightResult
+            );
+        }
+        announceStepResult(GamePhase::Night, nightResult);
+        applyStepResult(nightResult);
+
+        if (!checkVictory()) {
+            ++state.round;
+        }
     }
 
-    stopPlayerThreads();
+    state.phase = GamePhase::Finished;
+    if (gameLogger.has_value()) {
+        gameLogger->finishGame(*state.winner, state.players);
+    }
+    announceWinner();
 }
 
 GameSnapshot Game::snapshot() const {
@@ -225,9 +217,8 @@ GameSnapshot Game::snapshot() const {
 }
 
 RoleType Game::roleOf(PlayerId id) const {
-    const auto player = std::find_if(
-        players.begin(),
-        players.end(),
+    const auto player = std::ranges::find_if(
+        players,
         [id](const SharedPtr<Player>& current) {
             return current->id() == id;
         }
@@ -239,38 +230,16 @@ RoleType Game::roleOf(PlayerId id) const {
     return (*player)->role();
 }
 
-void Game::startPlayerThreads() {
-    playerThreads.reserve(players.size());
-    for (const SharedPtr<Player>& player : players) {
-        playerThreads.emplace_back(&Player::run, player.get());
-    }
-}
-
-void Game::stopPlayerThreads() noexcept {
-    for (const SharedPtr<Player>& player : players) {
-        player->stop();
-    }
-
-    for (std::thread& thread : playerThreads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
-    playerThreads.clear();
-}
-
 void Game::applyStepResult(const StepResult& result) {
     if (result.doctorTarget.has_value()) {
         state.lastDoctorTarget = result.doctorTarget;
     }
 
     for (const PlayerId eliminatedId : result.eliminated) {
-        const auto player = std::find_if(
-            state.players.begin(),
-            state.players.end(),
-            [eliminatedId](const PlayerState& playerState) {
-                return playerState.id == eliminatedId;
-            }
+        const auto player = std::ranges::find(
+            state.players,
+            eliminatedId,
+            &PlayerState::id
         );
 
         if (player != state.players.end()) {
@@ -280,37 +249,33 @@ void Game::applyStepResult(const StepResult& result) {
 }
 
 bool Game::checkVictory() {
-    std::size_t mafiaCount = 0;
-    std::size_t civilianCount = 0;
-    std::size_t maniacCount = 0;
-
-    for (const SharedPtr<Player>& player : players) {
-        const auto stateEntry = std::find_if(
-            state.players.begin(),
-            state.players.end(),
-            [&player](const PlayerState& current) {
-                return current.id == player->id();
-            }
+    const auto isAlive = [this](const SharedPtr<Player>& player) {
+        const auto stateEntry = std::ranges::find(
+            state.players,
+            player->id(),
+            &PlayerState::id
         );
+        return stateEntry != state.players.end() && stateEntry->alive;
+    };
 
-        if (stateEntry == state.players.end() || !stateEntry->alive) {
-            continue;
-        }
+    const auto countLivingRoles = [this, &isAlive](auto predicate) {
+        return static_cast<std::size_t>(std::ranges::count_if(
+            players,
+            [&isAlive, &predicate](const SharedPtr<Player>& player) {
+                return isAlive(player) && predicate(player->role());
+            }
+        ));
+    };
 
-        switch (player->role()) {
-            case RoleType::Mafia:
-                ++mafiaCount;
-                break;
-            case RoleType::Maniac:
-                ++maniacCount;
-                break;
-            case RoleType::Civilian:
-            case RoleType::Doctor:
-            case RoleType::Commissioner:
-                ++civilianCount;
-                break;
-        }
-    }
+    const std::size_t mafiaCount = countLivingRoles([](RoleType role) {
+        return role == RoleType::Mafia;
+    });
+    const std::size_t maniacCount = countLivingRoles([](RoleType role) {
+        return role == RoleType::Maniac;
+    });
+    const std::size_t civilianCount = countLivingRoles([](RoleType role) {
+        return role != RoleType::Mafia && role != RoleType::Maniac;
+    });
 
     state.winner.reset();
     if (mafiaCount == 0 && maniacCount == 0) {
@@ -339,13 +304,14 @@ void Game::announceGameStart() const {
         return;
     }
 
-    const std::size_t mafiaCount = static_cast<std::size_t>(std::count_if(
-        players.begin(),
-        players.end(),
-        [](const SharedPtr<Player>& player) {
-            return player->role() == RoleType::Mafia;
-        }
-    ));
+    const std::size_t mafiaCount = static_cast<std::size_t>(
+        std::ranges::count_if(
+            players,
+            [](const SharedPtr<Player>& player) {
+                return player->role() == RoleType::Mafia;
+            }
+        )
+    );
 
     std::cout
         << "=== Mafia game started ===\n"
@@ -540,9 +506,8 @@ void Game::startFileLogging() {
 }
 
 std::string Game::playerName(PlayerId id) const {
-    const auto player = std::find_if(
-        players.begin(),
-        players.end(),
+    const auto player = std::ranges::find_if(
+        players,
         [id](const SharedPtr<Player>& current) {
             return current->id() == id;
         }

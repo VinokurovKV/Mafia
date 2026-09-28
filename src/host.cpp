@@ -1,6 +1,7 @@
 #include "mafia/host.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -12,7 +13,26 @@ namespace {
 
 template <typename T>
 bool contains(const std::vector<T>& values, const T& value) {
-    return std::find(values.begin(), values.end(), value) != values.end();
+    return std::ranges::find(values, value) != values.end();
+}
+
+template <typename Predicate>
+std::vector<PlayerId> playerIds(
+    const std::vector<Player*>& players,
+    Predicate predicate
+) {
+    auto ids = players
+        | std::views::filter(std::move(predicate))
+        | std::views::transform([](const Player* player) {
+              return player->id();
+          });
+
+    std::vector<PlayerId> result;
+    result.reserve(players.size());
+    for (const PlayerId id : ids) {
+        result.push_back(id);
+    }
+    return result;
 }
 
 bool isValidAction(
@@ -60,12 +80,12 @@ StepResult Host::conductVoting(
     assignments.reserve(voters.size());
 
     for (Player* voter : voters) {
-        std::vector<PlayerId> targets;
-        for (Player* candidate : voters) {
-            if (candidate->id() != voter->id()) {
-                targets.push_back(candidate->id());
+        std::vector<PlayerId> targets = playerIds(
+            voters,
+            [voter](const Player* candidate) {
+                return candidate->id() != voter->id();
             }
-        }
+        );
 
         assignments.push_back({
             voter,
@@ -81,7 +101,7 @@ StepResult Host::conductVoting(
     const CollectedActions collected = collectActions(request, assignments);
     std::unordered_map<PlayerId, std::size_t> voteCounts;
 
-    for (const TurnAssignment& assignment : assignments) {
+    std::ranges::for_each(assignments, [&](const TurnAssignment& assignment) {
         const auto action = collected.actions.find(assignment.player->id());
         if (
             action != collected.actions.end() &&
@@ -89,20 +109,25 @@ StepResult Host::conductVoting(
         ) {
             ++voteCounts[action->second.target];
         }
-    }
+    });
 
     std::optional<PlayerId> selectedPlayer;
-    std::size_t maximumVotes = 0;
     bool tied = false;
-
-    for (const auto& [candidate, votes] : voteCounts) {
-        if (votes > maximumVotes) {
-            maximumVotes = votes;
-            selectedPlayer = candidate;
-            tied = false;
-        } else if (votes == maximumVotes) {
-            tied = true;
+    const auto maximum = std::ranges::max_element(
+        voteCounts,
+        {},
+        [](const auto& entry) {
+            return entry.second;
         }
+    );
+    if (maximum != voteCounts.end()) {
+        selectedPlayer = maximum->first;
+        tied = std::ranges::count_if(
+            voteCounts,
+            [maximum](const auto& entry) {
+                return entry.second == maximum->second;
+            }
+        ) > 1;
     }
 
     StepResult result;
@@ -111,9 +136,8 @@ StepResult Host::conductVoting(
         static_cast<void>(actor);
         result.actions.push_back(action);
     }
-    std::sort(
-        result.actions.begin(),
-        result.actions.end(),
+    std::ranges::sort(
+        result.actions,
         [](const Action& left, const Action& right) {
             return left.actor < right.actor;
         }
@@ -139,41 +163,43 @@ StepResult Host::conductNight(
         switch (actor->role()) {
             case RoleType::Mafia:
                 actionTypes = {ActionType::MafiaKill};
-                for (Player* candidate : living) {
-                    if (candidate->role() != RoleType::Mafia) {
-                        targets.push_back(candidate->id());
+                targets = playerIds(
+                    living,
+                    [](const Player* candidate) {
+                        return candidate->role() != RoleType::Mafia;
                     }
-                }
+                );
                 break;
 
             case RoleType::Doctor:
                 actionTypes = {ActionType::Heal};
-                for (Player* candidate : living) {
-                    if (
-                        !state.lastDoctorTarget.has_value() ||
-                        candidate->id() != *state.lastDoctorTarget
-                    ) {
-                        targets.push_back(candidate->id());
+                targets = playerIds(
+                    living,
+                    [&state](const Player* candidate) {
+                        return !state.lastDoctorTarget.has_value() ||
+                            candidate->id() != *state.lastDoctorTarget;
                     }
-                }
+                );
                 break;
 
             case RoleType::Commissioner:
                 actionTypes = {ActionType::Check, ActionType::Shoot};
-                for (Player* candidate : living) {
-                    if (candidate->id() != actor->id()) {
-                        targets.push_back(candidate->id());
+                targets = playerIds(
+                    living,
+                    [actor](const Player* candidate) {
+                        return candidate->id() != actor->id();
                     }
-                }
+                );
                 break;
 
             case RoleType::Maniac:
                 actionTypes = {ActionType::ManiacKill};
-                for (Player* candidate : living) {
-                    if (candidate->id() != actor->id()) {
-                        targets.push_back(candidate->id());
+                targets = playerIds(
+                    living,
+                    [actor](const Player* candidate) {
+                        return candidate->id() != actor->id();
                     }
-                }
+                );
                 break;
 
             case RoleType::Civilian:
@@ -198,20 +224,20 @@ StepResult Host::conductNight(
         static_cast<void>(actor);
         actionHistory.push_back(action);
     }
-    std::sort(
-        actionHistory.begin(),
-        actionHistory.end(),
+    std::ranges::sort(
+        actionHistory,
         [](const Action& left, const Action& right) {
             return left.actor < right.actor;
         }
     );
 
     std::vector<TurnAssignment> mafiaAssignments;
-    for (const TurnAssignment& assignment : assignments) {
-        if (assignment.player->role() != RoleType::Mafia) {
-            continue;
+    auto mafiaTurns = assignments | std::views::filter(
+        [](const TurnAssignment& assignment) {
+            return assignment.player->role() == RoleType::Mafia;
         }
-
+    );
+    for (const TurnAssignment& assignment : mafiaTurns) {
         mafiaAssignments.push_back(assignment);
         const auto proposal = collected.actions.find(assignment.player->id());
         if (
@@ -230,9 +256,8 @@ StepResult Host::conductNight(
             const PlayerId firstTarget = collected.actions.at(
                 mafiaAssignments.front().player->id()
             ).target;
-            const bool unanimous = std::all_of(
-                mafiaAssignments.begin(),
-                mafiaAssignments.end(),
+            const bool unanimous = std::ranges::all_of(
+                mafiaAssignments,
                 [&collected, firstTarget](const TurnAssignment& assignment) {
                     return collected.actions.at(
                         assignment.player->id()
@@ -250,14 +275,21 @@ StepResult Host::conductNight(
 
             for (const TurnAssignment& assignment : mafiaAssignments) {
                 std::vector<PlayerId> otherProposals;
-                for (const TurnAssignment& other : mafiaAssignments) {
-                    if (other.player->id() == assignment.player->id()) {
-                        continue;
-                    }
-
-                    const PlayerId proposedTarget = collected.actions.at(
-                        other.player->id()
-                    ).target;
+                auto proposals = mafiaAssignments
+                    | std::views::filter(
+                          [&assignment](const TurnAssignment& other) {
+                              return other.player->id() !=
+                                  assignment.player->id();
+                          }
+                      )
+                    | std::views::transform(
+                          [&collected](const TurnAssignment& other) {
+                              return collected.actions.at(
+                                  other.player->id()
+                              ).target;
+                          }
+                      );
+                for (const PlayerId proposedTarget : proposals) {
                     if (!contains(otherProposals, proposedTarget)) {
                         otherProposals.push_back(proposedTarget);
                     }
@@ -308,9 +340,8 @@ StepResult Host::conductNight(
         static_cast<void>(actor);
         result.actions.push_back(action);
     }
-    std::sort(
-        result.actions.begin(),
-        result.actions.end(),
+    std::ranges::sort(
+        result.actions,
         [](const Action& left, const Action& right) {
             return left.actor < right.actor;
         }
@@ -360,20 +391,20 @@ StepResult Host::conductNight(
         }
     }
 
-    const std::size_t livingMafia = static_cast<std::size_t>(std::count_if(
-        assignments.begin(),
-        assignments.end(),
-        [](const TurnAssignment& assignment) {
-            return assignment.player->role() == RoleType::Mafia;
-        }
-    ));
+    const std::size_t livingMafia = static_cast<std::size_t>(
+        std::ranges::count_if(
+            assignments,
+            [](const TurnAssignment& assignment) {
+                return assignment.player->role() == RoleType::Mafia;
+            }
+        )
+    );
 
     if (
         validMafiaActions == livingMafia &&
         !mafiaTargets.empty() &&
-        std::all_of(
-            mafiaTargets.begin(),
-            mafiaTargets.end(),
+        std::ranges::all_of(
+            mafiaTargets,
             [&mafiaTargets](PlayerId target) {
                 return target == mafiaTargets.front();
             }
@@ -390,7 +421,7 @@ StepResult Host::conductNight(
         attackedPlayers.begin(),
         attackedPlayers.end()
     );
-    std::sort(result.eliminated.begin(), result.eliminated.end());
+    std::ranges::sort(result.eliminated);
     return result;
 }
 
@@ -398,53 +429,59 @@ Host::CollectedActions Host::collectActions(
     const StepRequest& request,
     const std::vector<TurnAssignment>& assignments
 ) {
-    {
-        std::lock_guard lock(actionsMutex_);
-        if (activeStep_.has_value()) {
-            throw std::logic_error("Another step is already active");
-        }
-
-        activeStep_ = request.id;
-        lastActionReceived_.reset();
-        expectedPlayers_.clear();
-        actions_.clear();
-        for (const TurnAssignment& assignment : assignments) {
-            expectedPlayers_.insert(assignment.player->id());
-        }
-    }
-
     for (const TurnAssignment& assignment : assignments) {
         assignment.player->requestTurn(assignment.context);
     }
 
     CollectedActions collected;
-    {
-        std::unique_lock lock(actionsMutex_);
-        actionAvailable_.wait(lock, [this] {
-            return actions_.size() == expectedPlayers_.size();
-        });
+    collected.completedAt = std::chrono::system_clock::now();
 
-        collected.actions = std::move(actions_);
-        collected.completedAt = lastActionReceived_.value_or(
-            std::chrono::system_clock::now()
+    const auto resumePlayers = [&](bool interactive) {
+        auto scheduled = assignments | std::views::filter(
+            [interactive](const TurnAssignment& assignment) {
+                return assignment.player->isInteractive() == interactive;
+            }
         );
 
-        actions_.clear();
-        expectedPlayers_.clear();
-        activeStep_.reset();
-        lastActionReceived_.reset();
-    }
+        for (const TurnAssignment& assignment : scheduled) {
+            Action action = assignment.player->performTurn();
+            if (
+                action.stepId != request.id ||
+                action.actor != assignment.player->id()
+            ) {
+                throw std::logic_error(
+                    "Player coroutine returned an action for another turn"
+                );
+            }
+
+            const auto [position, inserted] = collected.actions.try_emplace(
+                action.actor,
+                std::move(action)
+            );
+            static_cast<void>(position);
+            if (!inserted) {
+                throw std::logic_error(
+                    "Player coroutine submitted more than one action"
+                );
+            }
+            collected.completedAt = std::chrono::system_clock::now();
+        }
+    };
+
+    resumePlayers(false);
+    resumePlayers(true);
     return collected;
 }
 
 std::vector<Player*> Host::livingPlayers(const GameSnapshot& state) const {
     std::vector<Player*> living;
 
-    for (const PlayerState& playerState : state.players) {
-        if (!playerState.alive) {
-            continue;
+    auto livingStates = state.players | std::views::filter(
+        [](const PlayerState& playerState) {
+            return playerState.alive;
         }
-
+    );
+    for (const PlayerState& playerState : livingStates) {
         Player* player = findPlayer(playerState.id);
         if (player == nullptr) {
             throw std::logic_error("Alive player is not registered in Host");
@@ -455,42 +492,13 @@ std::vector<Player*> Host::livingPlayers(const GameSnapshot& state) const {
 }
 
 Player* Host::findPlayer(PlayerId id) const noexcept {
-    const auto player = std::find_if(
-        players_.begin(),
-        players_.end(),
+    const auto player = std::ranges::find_if(
+        players_,
         [id](const Player* current) {
             return current->id() == id;
         }
     );
     return player == players_.end() ? nullptr : *player;
-}
-
-void Host::submitAction(const Action& action) {
-    bool actionAccepted = false;
-    {
-        std::lock_guard lock(actionsMutex_);
-
-        if (!activeStep_.has_value() || action.stepId != *activeStep_) {
-            return;
-        }
-        if (!expectedPlayers_.contains(action.actor)) {
-            return;
-        }
-
-        const auto [position, inserted] = actions_.try_emplace(
-            action.actor,
-            action
-        );
-        static_cast<void>(position);
-        if (inserted) {
-            lastActionReceived_ = std::chrono::system_clock::now();
-            actionAccepted = true;
-        }
-    }
-
-    if (actionAccepted) {
-        actionAvailable_.notify_one();
-    }
 }
 
 }  // namespace mafia

@@ -1,9 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -31,19 +31,17 @@ public:
         std::string name,
         SharedPtr<DecisionStrategy> strategy
     ) {
-        const auto duplicate = std::find_if(
-            state.players.begin(),
-            state.players.end(),
-            [id](const PlayerState& player) {
-                return player.id == id;
-            }
+        const auto duplicate = std::ranges::find(
+            state.players,
+            id,
+            &PlayerState::id
         );
         if (duplicate != state.players.end()) {
             throw std::logic_error("Player id is already used by Game");
         }
 
         SharedPtr<Player> player(
-            new Role(id, std::move(name), std::move(strategy), host)
+            new Role(id, std::move(name), std::move(strategy))
         );
 
         players.push_back(player);
@@ -64,8 +62,6 @@ public:
     RoleType roleOf(PlayerId id) const;
 
 private:
-    void startPlayerThreads();
-    void stopPlayerThreads() noexcept;
     void applyStepResult(const StepResult& result);
     bool checkVictory();
     void announceGameStart() const;
@@ -88,7 +84,6 @@ private:
     };
     Host host;
     std::vector<SharedPtr<Player>> players;
-    std::vector<std::thread> playerThreads;
     StepId nextStepId = 1;
     GameConfig config;
     bool outputEnabled = false;

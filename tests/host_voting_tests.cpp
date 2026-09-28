@@ -2,7 +2,9 @@
 #include "mafia/roles.hpp"
 
 #include <cassert>
-#include <thread>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -26,6 +28,35 @@ private:
     mafia::PlayerId target_;
 };
 
+class OrderedStrategy final : public mafia::DecisionStrategy {
+public:
+    OrderedStrategy(
+        mafia::PlayerId target,
+        std::string label,
+        std::vector<std::string>& executionOrder,
+        bool interactive
+    )
+        : target_(target),
+          label_(std::move(label)),
+          executionOrder_(executionOrder),
+          interactive_(interactive) {}
+
+    mafia::PlayerId chooseTarget(const mafia::TurnContext&) override {
+        executionOrder_.push_back(label_);
+        return target_;
+    }
+
+    bool isInteractive() const noexcept override {
+        return interactive_;
+    }
+
+private:
+    mafia::PlayerId target_;
+    std::string label_;
+    std::vector<std::string>& executionOrder_;
+    bool interactive_;
+};
+
 mafia::SharedPtr<mafia::DecisionStrategy> fixedTarget(
     mafia::PlayerId target
 ) {
@@ -36,17 +67,13 @@ mafia::SharedPtr<mafia::DecisionStrategy> fixedTarget(
 
 void testPlayerWithMostVotesIsEliminated() {
     mafia::Host host;
-    mafia::Civilian first(1, "First", fixedTarget(3), host);
-    mafia::Civilian second(2, "Second", fixedTarget(3), host);
-    mafia::Civilian third(3, "Third", fixedTarget(2), host);
+    mafia::Civilian first(1, "First", fixedTarget(3));
+    mafia::Civilian second(2, "Second", fixedTarget(3));
+    mafia::Civilian third(3, "Third", fixedTarget(2));
 
     host.registerPlayer(first);
     host.registerPlayer(second);
     host.registerPlayer(third);
-
-    std::thread firstThread(&mafia::Player::run, &first);
-    std::thread secondThread(&mafia::Player::run, &second);
-    std::thread thirdThread(&mafia::Player::run, &third);
 
     const mafia::GameSnapshot snapshot{
         1,
@@ -63,30 +90,19 @@ void testPlayerWithMostVotesIsEliminated() {
     assert(result.eliminated.size() == 1);
     assert(result.eliminated.front() == 3);
 
-    first.stop();
-    second.stop();
-    third.stop();
-    firstThread.join();
-    secondThread.join();
-    thirdThread.join();
 }
 
 void testTieEliminatesNobody() {
     mafia::Host host;
-    mafia::Civilian first(1, "First", fixedTarget(3), host);
-    mafia::Civilian second(2, "Second", fixedTarget(4), host);
-    mafia::Civilian third(3, "Third", fixedTarget(4), host);
-    mafia::Civilian fourth(4, "Fourth", fixedTarget(3), host);
+    mafia::Civilian first(1, "First", fixedTarget(3));
+    mafia::Civilian second(2, "Second", fixedTarget(4));
+    mafia::Civilian third(3, "Third", fixedTarget(4));
+    mafia::Civilian fourth(4, "Fourth", fixedTarget(3));
 
     host.registerPlayer(first);
     host.registerPlayer(second);
     host.registerPlayer(third);
     host.registerPlayer(fourth);
-
-    std::thread firstThread(&mafia::Player::run, &first);
-    std::thread secondThread(&mafia::Player::run, &second);
-    std::thread thirdThread(&mafia::Player::run, &third);
-    std::thread fourthThread(&mafia::Player::run, &fourth);
 
     const mafia::GameSnapshot snapshot{
         1,
@@ -101,15 +117,51 @@ void testTieEliminatesNobody() {
     );
 
     assert(result.eliminated.empty());
+}
 
-    first.stop();
-    second.stop();
-    third.stop();
-    fourth.stop();
-    firstThread.join();
-    secondThread.join();
-    thirdThread.join();
-    fourthThread.join();
+void testAutomaticCoroutineRunsBeforeInteractiveCoroutine() {
+    mafia::Host host;
+    std::vector<std::string> executionOrder;
+    mafia::Civilian interactive(
+        1,
+        "Interactive",
+        mafia::SharedPtr<mafia::DecisionStrategy>(new OrderedStrategy(
+            2,
+            "interactive",
+            executionOrder,
+            true
+        ))
+    );
+    mafia::Civilian automatic(
+        2,
+        "Automatic",
+        mafia::SharedPtr<mafia::DecisionStrategy>(new OrderedStrategy(
+            1,
+            "automatic",
+            executionOrder,
+            false
+        ))
+    );
+
+    host.registerPlayer(interactive);
+    host.registerPlayer(automatic);
+    const mafia::GameSnapshot snapshot{
+        1,
+        mafia::GamePhase::Voting,
+        {{1, true}, {2, true}},
+        std::nullopt,
+        std::nullopt,
+    };
+
+    static_cast<void>(host.conductStep(
+        {102, mafia::GamePhase::Voting},
+        snapshot
+    ));
+
+    assert((executionOrder == std::vector<std::string>{
+        "automatic",
+        "interactive",
+    }));
 }
 
 }  // namespace
@@ -117,4 +169,5 @@ void testTieEliminatesNobody() {
 int main() {
     testPlayerWithMostVotesIsEliminated();
     testTieEliminatesNobody();
+    testAutomaticCoroutineRunsBeforeInteractiveCoroutine();
 }

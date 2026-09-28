@@ -5,6 +5,7 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
+#include <ranges>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -238,12 +239,10 @@ void GameLogger::finishGame(
     output << "=== Game summary ===\nWinner: " << winnerName(winner) << "\n";
     for (const LoggedPlayer& player : players_) {
         const PlayerStatistics& stats = statistics_.at(player.id);
-        const auto state = std::find_if(
-            states.begin(),
-            states.end(),
-            [&player](const PlayerState& current) {
-                return current.id == player.id;
-            }
+        const auto state = std::ranges::find(
+            states,
+            player.id,
+            &PlayerState::id
         );
         const bool alive = state != states.end() && state->alive;
 
@@ -277,12 +276,10 @@ const std::filesystem::path& GameLogger::sessionDirectory() const noexcept {
 }
 
 std::string GameLogger::playerLabel(PlayerId id) const {
-    const auto player = std::find_if(
-        players_.begin(),
-        players_.end(),
-        [id](const LoggedPlayer& current) {
-            return current.id == id;
-        }
+    const auto player = std::ranges::find(
+        players_,
+        id,
+        &LoggedPlayer::id
     );
     if (player == players_.end()) {
         return "Unknown player (#" + std::to_string(id) + ")";

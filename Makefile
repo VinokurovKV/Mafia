@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -pthread -Iinclude
+CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -Iinclude
 RUN_ARGS ?= --players 10 --closed-announcements --brief-log
 
 ifeq ($(OS),Windows_NT)

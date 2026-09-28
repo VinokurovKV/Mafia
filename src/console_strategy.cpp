@@ -4,6 +4,7 @@
 #include <charconv>
 #include <istream>
 #include <ostream>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -48,6 +49,10 @@ ConsoleStrategy::ConsoleStrategy(std::istream& input, std::ostream& output)
     : input_(input),
       output_(output) {}
 
+bool ConsoleStrategy::isInteractive() const noexcept {
+    return true;
+}
+
 PlayerId ConsoleStrategy::chooseTarget(const TurnContext& context) {
     if (context.availableTargets.empty()) {
         throw std::logic_error("No targets are available");
@@ -71,11 +76,8 @@ PlayerId ConsoleStrategy::chooseTarget(const TurnContext& context) {
         PlayerId selected = 0;
         if (
             parsePlayerId(line, selected) &&
-            std::find(
-                context.availableTargets.begin(),
-                context.availableTargets.end(),
-                selected
-            ) != context.availableTargets.end()
+            std::ranges::find(context.availableTargets, selected) !=
+                context.availableTargets.end()
         ) {
             return selected;
         }

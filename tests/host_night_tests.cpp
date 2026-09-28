@@ -5,7 +5,6 @@
 #include <cassert>
 #include <chrono>
 #include <optional>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -114,46 +113,30 @@ mafia::SharedPtr<mafia::DecisionStrategy> nightStrategy(
     );
 }
 
-void registerAndStart(
+void registerPlayers(
     mafia::Host& host,
-    const std::vector<mafia::Player*>& players,
-    std::vector<std::thread>& threads
+    const std::vector<mafia::Player*>& players
 ) {
     for (mafia::Player* player : players) {
         host.registerPlayer(*player);
-        threads.emplace_back(&mafia::Player::run, player);
-    }
-}
-
-void stopAndJoin(
-    const std::vector<mafia::Player*>& players,
-    std::vector<std::thread>& threads
-) {
-    for (mafia::Player* player : players) {
-        player->stop();
-    }
-    for (std::thread& thread : threads) {
-        thread.join();
     }
 }
 
 void testHealingAndInvestigation() {
     mafia::Host host;
-    mafia::Mafia mafiaPlayer(1, "Mafia", nightStrategy(4), host);
+    mafia::Mafia mafiaPlayer(1, "Mafia", nightStrategy(4));
     mafia::Doctor doctor(
         2,
         "Doctor",
-        nightStrategy(4, std::nullopt, 2),
-        host
+        nightStrategy(4, std::nullopt, 2)
     );
     mafia::Commissioner commissioner(
         3,
         "Commissioner",
-        nightStrategy(1, mafia::ActionType::Check),
-        host
+        nightStrategy(1, mafia::ActionType::Check)
     );
-    mafia::Maniac maniac(4, "Maniac", nightStrategy(5), host);
-    mafia::Civilian civilian(5, "Civilian", nightStrategy(1), host);
+    mafia::Maniac maniac(4, "Maniac", nightStrategy(5));
+    mafia::Civilian civilian(5, "Civilian", nightStrategy(1));
 
     const std::vector<mafia::Player*> players{
         &mafiaPlayer,
@@ -162,8 +145,7 @@ void testHealingAndInvestigation() {
         &maniac,
         &civilian,
     };
-    std::vector<std::thread> threads;
-    registerAndStart(host, players, threads);
+    registerPlayers(host, players);
 
     const mafia::GameSnapshot snapshot{
         1,
@@ -176,8 +158,6 @@ void testHealingAndInvestigation() {
         {200, mafia::GamePhase::Night},
         snapshot
     );
-    stopAndJoin(players, threads);
-
     assert(result.doctorTarget == 4);
     assert(result.eliminated == std::vector<mafia::PlayerId>{5});
     assert(result.investigations.size() == 1);
@@ -191,16 +171,15 @@ void testHealingAndInvestigation() {
 
 void testCommissionerCanShoot() {
     mafia::Host host;
-    mafia::Mafia mafiaPlayer(1, "Mafia", nightStrategy(5), host);
-    mafia::Doctor doctor(2, "Doctor", nightStrategy(4), host);
+    mafia::Mafia mafiaPlayer(1, "Mafia", nightStrategy(5));
+    mafia::Doctor doctor(2, "Doctor", nightStrategy(4));
     mafia::Commissioner commissioner(
         3,
         "Commissioner",
-        nightStrategy(1, mafia::ActionType::Shoot),
-        host
+        nightStrategy(1, mafia::ActionType::Shoot)
     );
-    mafia::Maniac maniac(4, "Maniac", nightStrategy(5), host);
-    mafia::Civilian civilian(5, "Civilian", nightStrategy(1), host);
+    mafia::Maniac maniac(4, "Maniac", nightStrategy(5));
+    mafia::Civilian civilian(5, "Civilian", nightStrategy(1));
 
     const std::vector<mafia::Player*> players{
         &mafiaPlayer,
@@ -209,8 +188,7 @@ void testCommissionerCanShoot() {
         &maniac,
         &civilian,
     };
-    std::vector<std::thread> threads;
-    registerAndStart(host, players, threads);
+    registerPlayers(host, players);
 
     const mafia::GameSnapshot snapshot{
         1,
@@ -223,19 +201,17 @@ void testCommissionerCanShoot() {
         {201, mafia::GamePhase::Night},
         snapshot
     );
-    stopAndJoin(players, threads);
-
     assert((result.eliminated == std::vector<mafia::PlayerId>{1, 5}));
     assert(result.investigations.empty());
 }
 
 void testMafiaAlwaysReachesACommonTarget() {
     mafia::Host host;
-    mafia::Mafia firstMafia(1, "First Mafia", nightStrategy(4), host);
-    mafia::Mafia secondMafia(2, "Second Mafia", nightStrategy(5), host);
-    mafia::Civilian firstCivilian(3, "First", nightStrategy(1), host);
-    mafia::Civilian secondCivilian(4, "Second", nightStrategy(1), host);
-    mafia::Civilian thirdCivilian(5, "Third", nightStrategy(1), host);
+    mafia::Mafia firstMafia(1, "First Mafia", nightStrategy(4));
+    mafia::Mafia secondMafia(2, "Second Mafia", nightStrategy(5));
+    mafia::Civilian firstCivilian(3, "First", nightStrategy(1));
+    mafia::Civilian secondCivilian(4, "Second", nightStrategy(1));
+    mafia::Civilian thirdCivilian(5, "Third", nightStrategy(1));
 
     const std::vector<mafia::Player*> players{
         &firstMafia,
@@ -244,8 +220,7 @@ void testMafiaAlwaysReachesACommonTarget() {
         &secondCivilian,
         &thirdCivilian,
     };
-    std::vector<std::thread> threads;
-    registerAndStart(host, players, threads);
+    registerPlayers(host, players);
 
     const mafia::GameSnapshot snapshot{
         1,
@@ -258,8 +233,6 @@ void testMafiaAlwaysReachesACommonTarget() {
         {202, mafia::GamePhase::Night},
         snapshot
     );
-    stopAndJoin(players, threads);
-
     assert(result.eliminated.size() == 1);
     assert(
         result.eliminated.front() == 4 ||
@@ -288,25 +261,22 @@ void testMafiaReceivesOtherPlayersProposals() {
     mafia::Mafia firstMafia(
         1,
         "First Mafia",
-        mafia::SharedPtr<mafia::DecisionStrategy>(firstStrategy),
-        host
+        mafia::SharedPtr<mafia::DecisionStrategy>(firstStrategy)
     );
     mafia::Mafia secondMafia(
         2,
         "Second Mafia",
-        mafia::SharedPtr<mafia::DecisionStrategy>(secondStrategy),
-        host
+        mafia::SharedPtr<mafia::DecisionStrategy>(secondStrategy)
     );
     mafia::Mafia thirdMafia(
         3,
         "Third Mafia",
-        mafia::SharedPtr<mafia::DecisionStrategy>(thirdStrategy),
-        host
+        mafia::SharedPtr<mafia::DecisionStrategy>(thirdStrategy)
     );
-    mafia::Civilian firstCivilian(4, "First", nightStrategy(1), host);
-    mafia::Civilian secondCivilian(5, "Second", nightStrategy(1), host);
-    mafia::Civilian thirdCivilian(6, "Third", nightStrategy(1), host);
-    mafia::Civilian fourthCivilian(7, "Fourth", nightStrategy(1), host);
+    mafia::Civilian firstCivilian(4, "First", nightStrategy(1));
+    mafia::Civilian secondCivilian(5, "Second", nightStrategy(1));
+    mafia::Civilian thirdCivilian(6, "Third", nightStrategy(1));
+    mafia::Civilian fourthCivilian(7, "Fourth", nightStrategy(1));
 
     const std::vector<mafia::Player*> players{
         &firstMafia,
@@ -317,8 +287,7 @@ void testMafiaReceivesOtherPlayersProposals() {
         &thirdCivilian,
         &fourthCivilian,
     };
-    std::vector<std::thread> threads;
-    registerAndStart(host, players, threads);
+    registerPlayers(host, players);
 
     const mafia::GameSnapshot snapshot{
         1,
@@ -334,8 +303,6 @@ void testMafiaReceivesOtherPlayersProposals() {
         {203, mafia::GamePhase::Night},
         snapshot
     );
-    stopAndJoin(players, threads);
-
     assert(result.mafiaTarget == 5);
     assert(result.eliminated == std::vector<mafia::PlayerId>{5});
     assert(result.mafiaConsensusRequired);

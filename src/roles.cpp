@@ -1,6 +1,7 @@
 #include "mafia/roles.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
 #include <string_view>
 
@@ -103,11 +104,8 @@ Action Commissioner::makeAction(const TurnContext& context) {
             );
         }
         if (
-            std::find(
-                context.availableActions.begin(),
-                context.availableActions.end(),
-                actionType
-            ) == context.availableActions.end()
+            std::ranges::find(context.availableActions, actionType) ==
+                context.availableActions.end()
         ) {
             throw std::logic_error(
                 "Commissioner selected an unavailable action"

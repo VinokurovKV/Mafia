@@ -12,6 +12,7 @@ public:
 
     PlayerId chooseTarget(const TurnContext& context) override;
     ActionType chooseActionType(const TurnContext& context) override;
+    bool isInteractive() const noexcept override;
 
 private:
     std::istream& input_;

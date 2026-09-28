@@ -1,4 +1,3 @@
-#include "mafia/host.hpp"
 #include "mafia/roles.hpp"
 
 #include <cassert>
@@ -32,10 +31,9 @@ void expectAction(
     mafia::GamePhase phase,
     mafia::ActionType expectedType
 ) {
-    mafia::Host host;
     auto* strategyValue = new FixedStrategy(7);
     mafia::SharedPtr<mafia::DecisionStrategy> strategy(strategyValue);
-    Role role(actor, "Player", strategy, host);
+    Role role(actor, "Player", strategy);
 
     const mafia::Action action = role.makeAction({
         42,
@@ -67,9 +65,8 @@ void testNightActions() {
 }
 
 void testCivilianCannotActAtNight() {
-    mafia::Host host;
     mafia::SharedPtr<mafia::DecisionStrategy> strategy(new FixedStrategy(7));
-    mafia::Civilian civilian(2, "Civilian", strategy, host);
+    mafia::Civilian civilian(2, "Civilian", strategy);
 
     bool exceptionThrown = false;
     try {
