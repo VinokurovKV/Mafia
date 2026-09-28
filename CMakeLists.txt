@@ -13,6 +13,7 @@ add_executable(mafia
     src/main.cpp
     src/player.cpp
     src/random_strategy.cpp
+    src/role_config.cpp
     src/roles.cpp
 )
 
@@ -178,6 +179,7 @@ if (BUILD_TESTING)
         src/host.cpp
         src/player.cpp
         src/random_strategy.cpp
+        src/role_config.cpp
         src/roles.cpp
     )
     target_include_directories(game_voting_tests PRIVATE include)
@@ -200,6 +202,7 @@ if (BUILD_TESTING)
         src/host.cpp
         src/player.cpp
         src/random_strategy.cpp
+        src/role_config.cpp
         src/roles.cpp
     )
     target_include_directories(game_cycle_tests PRIVATE include)
@@ -222,6 +225,7 @@ if (BUILD_TESTING)
         src/host.cpp
         src/player.cpp
         src/random_strategy.cpp
+        src/role_config.cpp
         src/roles.cpp
     )
     target_include_directories(game_creation_tests PRIVATE include)

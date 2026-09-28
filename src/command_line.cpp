@@ -78,6 +78,15 @@ CommandLineOptions parseCommandLine(
             options.config.logDirectory = arguments[index];
             continue;
         }
+        if (argument == "--role-config") {
+            if (++index == arguments.size() || arguments[index].empty()) {
+                throw std::invalid_argument(
+                    "--role-config requires a value"
+                );
+            }
+            options.config.roleConfigFile = arguments[index];
+            continue;
+        }
         if (
             argument == "--open-announcements" ||
             argument == "--closed-announcements"
@@ -131,6 +140,7 @@ std::string commandLineUsage(std::string_view executableName) {
         "  --full-log               Print every accepted action\n"
         "  --brief-log              Print only main events (default)\n"
         "  --log-directory PATH     File log directory (default: logs)\n"
+        "  --role-config PATH       YAML file with additional roles\n"
         "  --help, -h               Show this help\n";
 }
 

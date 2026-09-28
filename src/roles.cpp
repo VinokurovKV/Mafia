@@ -146,4 +146,55 @@ RoleType Maniac::role() const noexcept {
     return RoleType::Maniac;
 }
 
+Action Eavesdropper::makeAction(const TurnContext& context) {
+    return makeTargetedAction(
+        *this,
+        strategy(),
+        context,
+        actionTypeForPhase(
+            context.phase,
+            ActionType::Listen,
+            "Eavesdropper"
+        )
+    );
+}
+
+RoleType Eavesdropper::role() const noexcept {
+    return RoleType::Eavesdropper;
+}
+
+Action Witness::makeAction(const TurnContext& context) {
+    return makeTargetedAction(
+        *this,
+        strategy(),
+        context,
+        actionTypeForPhase(
+            context.phase,
+            ActionType::Observe,
+            "Witness"
+        )
+    );
+}
+
+RoleType Witness::role() const noexcept {
+    return RoleType::Witness;
+}
+
+Action Bull::makeAction(const TurnContext& context) {
+    return makeTargetedAction(
+        *this,
+        strategy(),
+        context,
+        actionTypeForPhase(
+            context.phase,
+            ActionType::MafiaKill,
+            "Bull"
+        )
+    );
+}
+
+RoleType Bull::role() const noexcept {
+    return RoleType::Bull;
+}
+
 }  // namespace mafia

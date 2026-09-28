@@ -55,6 +55,9 @@ void testVotingActions() {
     expectAction<mafia::Doctor>(3, mafia::GamePhase::Voting, mafia::ActionType::Vote);
     expectAction<mafia::Commissioner>(4, mafia::GamePhase::Voting, mafia::ActionType::Vote);
     expectAction<mafia::Maniac>(5, mafia::GamePhase::Voting, mafia::ActionType::Vote);
+    expectAction<mafia::Eavesdropper>(6, mafia::GamePhase::Voting, mafia::ActionType::Vote);
+    expectAction<mafia::Witness>(7, mafia::GamePhase::Voting, mafia::ActionType::Vote);
+    expectAction<mafia::Bull>(8, mafia::GamePhase::Voting, mafia::ActionType::Vote);
 }
 
 void testNightActions() {
@@ -62,6 +65,9 @@ void testNightActions() {
     expectAction<mafia::Doctor>(3, mafia::GamePhase::Night, mafia::ActionType::Heal);
     expectAction<mafia::Commissioner>(4, mafia::GamePhase::Night, mafia::ActionType::Check);
     expectAction<mafia::Maniac>(5, mafia::GamePhase::Night, mafia::ActionType::ManiacKill);
+    expectAction<mafia::Eavesdropper>(6, mafia::GamePhase::Night, mafia::ActionType::Listen);
+    expectAction<mafia::Witness>(7, mafia::GamePhase::Night, mafia::ActionType::Observe);
+    expectAction<mafia::Bull>(8, mafia::GamePhase::Night, mafia::ActionType::MafiaKill);
 }
 
 void testCivilianCannotActAtNight() {

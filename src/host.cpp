@@ -162,11 +162,12 @@ StepResult Host::conductNight(
 
         switch (actor->role()) {
             case RoleType::Mafia:
+            case RoleType::Bull:
                 actionTypes = {ActionType::MafiaKill};
                 targets = playerIds(
                     living,
                     [](const Player* candidate) {
-                        return candidate->role() != RoleType::Mafia;
+                        return !isMafiaRole(candidate->role());
                     }
                 );
                 break;
@@ -194,6 +195,26 @@ StepResult Host::conductNight(
 
             case RoleType::Maniac:
                 actionTypes = {ActionType::ManiacKill};
+                targets = playerIds(
+                    living,
+                    [actor](const Player* candidate) {
+                        return candidate->id() != actor->id();
+                    }
+                );
+                break;
+
+            case RoleType::Eavesdropper:
+                actionTypes = {ActionType::Listen};
+                targets = playerIds(
+                    living,
+                    [actor](const Player* candidate) {
+                        return candidate->id() != actor->id();
+                    }
+                );
+                break;
+
+            case RoleType::Witness:
+                actionTypes = {ActionType::Observe};
                 targets = playerIds(
                     living,
                     [actor](const Player* candidate) {
@@ -234,7 +255,7 @@ StepResult Host::conductNight(
     std::vector<TurnAssignment> mafiaAssignments;
     auto mafiaTurns = assignments | std::views::filter(
         [](const TurnAssignment& assignment) {
-            return assignment.player->role() == RoleType::Mafia;
+            return isMafiaRole(assignment.player->role());
         }
     );
     for (const TurnAssignment& assignment : mafiaTurns) {
@@ -376,14 +397,25 @@ StepResult Host::conductNight(
                 result.investigations.push_back({
                     action.actor,
                     action.target,
-                    target != nullptr && target->role() == RoleType::Mafia,
+                    target != nullptr && isMafiaRole(target->role()),
                 });
                 break;
             }
 
             case ActionType::Shoot:
-            case ActionType::ManiacKill:
                 attackedPlayers.insert(action.target);
+                break;
+
+            case ActionType::ManiacKill: {
+                const Player* target = findPlayer(action.target);
+                if (target == nullptr || target->role() != RoleType::Bull) {
+                    attackedPlayers.insert(action.target);
+                }
+                break;
+            }
+
+            case ActionType::Listen:
+            case ActionType::Observe:
                 break;
 
             case ActionType::Vote:
@@ -395,7 +427,7 @@ StepResult Host::conductNight(
         std::ranges::count_if(
             assignments,
             [](const TurnAssignment& assignment) {
-                return assignment.player->role() == RoleType::Mafia;
+                return isMafiaRole(assignment.player->role());
             }
         )
     );
@@ -415,6 +447,47 @@ StepResult Host::conductNight(
 
     if (result.doctorTarget.has_value()) {
         attackedPlayers.erase(*result.doctorTarget);
+    }
+
+    for (const Action& observerAction : result.actions) {
+        if (observerAction.type == ActionType::Listen) {
+            EavesdropResult observation{
+                observerAction.actor,
+                observerAction.target,
+                {},
+            };
+            for (const Action& directed : result.actions) {
+                if (
+                    directed.actor != observerAction.actor &&
+                    directed.target == observerAction.target &&
+                    !contains(observation.directedActions, directed.type)
+                ) {
+                    observation.directedActions.push_back(directed.type);
+                }
+            }
+            result.eavesdropResults.push_back(std::move(observation));
+        } else if (observerAction.type == ActionType::Observe) {
+            WitnessResult observation{
+                observerAction.actor,
+                observerAction.target,
+                {},
+            };
+            for (const Action& directed : result.actions) {
+                const bool isAttack =
+                    directed.type == ActionType::Shoot ||
+                    directed.type == ActionType::ManiacKill ||
+                    (directed.type == ActionType::MafiaKill &&
+                     result.mafiaTarget == directed.target);
+                if (
+                    isAttack &&
+                    directed.target == observerAction.target &&
+                    !contains(observation.attackers, directed.actor)
+                ) {
+                    observation.attackers.push_back(directed.actor);
+                }
+            }
+            result.witnessResults.push_back(std::move(observation));
+        }
     }
 
     result.eliminated.assign(

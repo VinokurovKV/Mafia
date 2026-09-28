@@ -26,6 +26,10 @@ std::string_view actionName(ActionType action) {
             return "Shoot";
         case ActionType::ManiacKill:
             return "Maniac kill";
+        case ActionType::Listen:
+            return "Listen";
+        case ActionType::Observe:
+            return "Observe";
     }
     return "Unknown";
 }

@@ -54,4 +54,34 @@ public:
     RoleType role() const noexcept override;
 };
 
+class Eavesdropper : public Player {
+public:
+    using Player::Player;
+    static constexpr bool participatesInVoting = true;
+    static constexpr bool actsAtNight = true;
+
+    Action makeAction(const TurnContext& context) override;
+    RoleType role() const noexcept override;
+};
+
+class Witness : public Player {
+public:
+    using Player::Player;
+    static constexpr bool participatesInVoting = true;
+    static constexpr bool actsAtNight = true;
+
+    Action makeAction(const TurnContext& context) override;
+    RoleType role() const noexcept override;
+};
+
+class Bull : public Player {
+public:
+    using Player::Player;
+    static constexpr bool participatesInVoting = true;
+    static constexpr bool actsAtNight = true;
+
+    Action makeAction(const TurnContext& context) override;
+    RoleType role() const noexcept override;
+};
+
 }  // namespace mafia

@@ -314,6 +314,80 @@ void testMafiaReceivesOtherPlayersProposals() {
     assert(result.actionHistory.size() == result.actions.size() + 3);
 }
 
+void testAdditionalRoleNightRules() {
+    mafia::Host host;
+    mafia::Mafia mafiaPlayer(1, "Mafia", nightStrategy(4));
+    mafia::Maniac maniac(2, "Maniac", nightStrategy(3));
+    mafia::Bull bull(3, "Bull", nightStrategy(4));
+    mafia::Doctor doctor(4, "Doctor", nightStrategy(4));
+    mafia::Eavesdropper eavesdropper(
+        5,
+        "Eavesdropper",
+        nightStrategy(3)
+    );
+    mafia::Witness witness(6, "Witness", nightStrategy(3));
+    mafia::Civilian civilian(7, "Civilian", nightStrategy(1));
+    mafia::Commissioner commissioner(
+        8,
+        "Commissioner",
+        nightStrategy(3, mafia::ActionType::Check)
+    );
+
+    const std::vector<mafia::Player*> players{
+        &mafiaPlayer,
+        &maniac,
+        &bull,
+        &doctor,
+        &eavesdropper,
+        &witness,
+        &civilian,
+        &commissioner,
+    };
+    registerPlayers(host, players);
+
+    const mafia::GameSnapshot snapshot{
+        1,
+        mafia::GamePhase::Night,
+        {
+            {1, true}, {2, true}, {3, true}, {4, true},
+            {5, true}, {6, true}, {7, true}, {8, true},
+        },
+        std::nullopt,
+        std::nullopt,
+    };
+    const mafia::StepResult result = host.conductStep(
+        {204, mafia::GamePhase::Night},
+        snapshot
+    );
+
+    assert(result.mafiaTarget == 4);
+    assert(result.eliminated.empty());
+    assert(result.investigations.size() == 1);
+    assert(result.investigations.front().target == 3);
+    assert(result.investigations.front().targetIsMafia);
+
+    assert(result.eavesdropResults.size() == 1);
+    const auto& heard = result.eavesdropResults.front();
+    assert(heard.listener == 5);
+    assert(heard.target == 3);
+    assert(std::find(
+        heard.directedActions.begin(),
+        heard.directedActions.end(),
+        mafia::ActionType::ManiacKill
+    ) != heard.directedActions.end());
+    assert(std::find(
+        heard.directedActions.begin(),
+        heard.directedActions.end(),
+        mafia::ActionType::Check
+    ) != heard.directedActions.end());
+
+    assert(result.witnessResults.size() == 1);
+    const auto& observed = result.witnessResults.front();
+    assert(observed.witness == 6);
+    assert(observed.target == 3);
+    assert(observed.attackers == std::vector<mafia::PlayerId>{2});
+}
+
 }  // namespace
 
 int main() {
@@ -321,4 +395,5 @@ int main() {
     testCommissionerCanShoot();
     testMafiaAlwaysReachesACommonTarget();
     testMafiaReceivesOtherPlayersProposals();
+    testAdditionalRoleNightRules();
 }

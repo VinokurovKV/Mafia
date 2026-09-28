@@ -25,6 +25,8 @@ enum class ActionType {
     Check,
     Shoot,
     ManiacKill,
+    Listen,
+    Observe,
 };
 
 enum class RoleType {
@@ -33,7 +35,14 @@ enum class RoleType {
     Doctor,
     Commissioner,
     Maniac,
+    Eavesdropper,
+    Witness,
+    Bull,
 };
+
+constexpr bool isMafiaRole(RoleType role) noexcept {
+    return role == RoleType::Mafia || role == RoleType::Bull;
+}
 
 enum class Winner {
     Civilians,
@@ -58,6 +67,7 @@ struct GameConfig {
     AnnouncementMode announcementMode = AnnouncementMode::Closed;
     LogLevel logLevel = LogLevel::Brief;
     std::string logDirectory = "logs";
+    std::string roleConfigFile;
 };
 
 struct PlayerState {
@@ -106,6 +116,18 @@ struct InvestigationResult {
     bool targetIsMafia;
 };
 
+struct EavesdropResult {
+    PlayerId listener;
+    PlayerId target;
+    std::vector<ActionType> directedActions;
+};
+
+struct WitnessResult {
+    PlayerId witness;
+    PlayerId target;
+    std::vector<PlayerId> attackers;
+};
+
 struct StepResult {
     std::vector<PlayerId> eliminated;
     std::vector<Action> actions;
@@ -113,6 +135,8 @@ struct StepResult {
     std::optional<PlayerId> mafiaTarget;
     bool mafiaConsensusRequired = false;
     std::vector<InvestigationResult> investigations;
+    std::vector<EavesdropResult> eavesdropResults;
+    std::vector<WitnessResult> witnessResults;
     std::optional<PlayerId> doctorTarget;
     std::chrono::system_clock::time_point completedAt;
 };

@@ -30,7 +30,8 @@ CONSOLE_STRATEGY_TEST_TARGET := console_strategy_tests$(EXECUTABLE_SUFFIX)
 GAME_LOGGER_TEST_TARGET := game_logger_tests$(EXECUTABLE_SUFFIX)
 ROLE_CONCEPTS_TEST_TARGET := role_concepts_tests$(EXECUTABLE_SUFFIX)
 SOURCES := src/main.cpp src/command_line.cpp src/console_strategy.cpp src/game.cpp \
-	src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp
+	src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp \
+	src/role_config.cpp src/roles.cpp
 BINARIES := $(TARGET) $(TEST_TARGET) $(PLAYER_TEST_TARGET) $(ROLE_TEST_TARGET) \
 	$(HOST_TEST_TARGET) $(NIGHT_TEST_TARGET) $(GAME_TEST_TARGET) \
 	$(GAME_CYCLE_TEST_TARGET) $(GAME_CREATION_TEST_TARGET) \
@@ -66,17 +67,17 @@ $(NIGHT_TEST_TARGET): tests/host_night_tests.cpp src/host.cpp src/player.cpp src
 	@$(ECHO) Building Host night tests...
 	@$(CXX) $(CXXFLAGS) tests/host_night_tests.cpp src/host.cpp src/player.cpp src/roles.cpp -o $(NIGHT_TEST_TARGET)
 
-$(GAME_TEST_TARGET): tests/game_voting_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp
+$(GAME_TEST_TARGET): tests/game_voting_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/role_config.cpp src/roles.cpp
 	@$(ECHO) Building Game voting tests...
-	@$(CXX) $(CXXFLAGS) tests/game_voting_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp -o $(GAME_TEST_TARGET)
+	@$(CXX) $(CXXFLAGS) tests/game_voting_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/role_config.cpp src/roles.cpp -o $(GAME_TEST_TARGET)
 
-$(GAME_CYCLE_TEST_TARGET): tests/game_cycle_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp
+$(GAME_CYCLE_TEST_TARGET): tests/game_cycle_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/role_config.cpp src/roles.cpp
 	@$(ECHO) Building Game cycle tests...
-	@$(CXX) $(CXXFLAGS) tests/game_cycle_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp -o $(GAME_CYCLE_TEST_TARGET)
+	@$(CXX) $(CXXFLAGS) tests/game_cycle_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/role_config.cpp src/roles.cpp -o $(GAME_CYCLE_TEST_TARGET)
 
-$(GAME_CREATION_TEST_TARGET): tests/game_creation_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp
+$(GAME_CREATION_TEST_TARGET): tests/game_creation_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/role_config.cpp src/roles.cpp
 	@$(ECHO) Building Game creation tests...
-	@$(CXX) $(CXXFLAGS) tests/game_creation_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/roles.cpp -o $(GAME_CREATION_TEST_TARGET)
+	@$(CXX) $(CXXFLAGS) tests/game_creation_tests.cpp src/console_strategy.cpp src/game.cpp src/game_logger.cpp src/host.cpp src/player.cpp src/random_strategy.cpp src/role_config.cpp src/roles.cpp -o $(GAME_CREATION_TEST_TARGET)
 
 $(COMMAND_LINE_TEST_TARGET): tests/command_line_tests.cpp src/command_line.cpp
 	@$(ECHO) Building command line tests...

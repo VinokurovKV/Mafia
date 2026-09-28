@@ -36,6 +36,8 @@ private:
         std::size_t checks = 0;
         std::size_t shots = 0;
         std::size_t maniacTargets = 0;
+        std::size_t listens = 0;
+        std::size_t observations = 0;
         std::optional<int> eliminatedRound;
         std::optional<GamePhase> eliminatedPhase;
     };

@@ -37,6 +37,8 @@ int main() {
         "--full-log",
         "--log-directory",
         "test-logs",
+        "--role-config",
+        "config/roles.yaml",
     });
     assert(full.config.playerCount == 12);
     assert(full.config.mafiaDivisor == 4);
@@ -46,6 +48,7 @@ int main() {
     );
     assert(full.config.logLevel == mafia::LogLevel::Full);
     assert(full.config.logDirectory == "test-logs");
+    assert(full.config.roleConfigFile == "config/roles.yaml");
 
     const mafia::CommandLineOptions defaults = parse({"--players", "5"});
     assert(!defaults.config.interactive);
@@ -54,6 +57,7 @@ int main() {
     );
     assert(defaults.config.logLevel == mafia::LogLevel::Brief);
     assert(defaults.config.logDirectory == "logs");
+    assert(defaults.config.roleConfigFile.empty());
 
     assert(parse({"--help"}).showHelp);
     assert(throwsInvalidArgument([] { parse({}); }));
@@ -66,6 +70,9 @@ int main() {
     }));
     assert(throwsInvalidArgument([] {
         parse({"--players", "10", "--log-directory"});
+    }));
+    assert(throwsInvalidArgument([] {
+        parse({"--players", "10", "--role-config"});
     }));
     assert(throwsInvalidArgument([] {
         parse({

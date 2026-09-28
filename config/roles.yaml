@@ -1,0 +1,5 @@
+# Optional roles enabled for this game.
+additional_roles:
+  - eavesdropper
+  - witness
+  - bull

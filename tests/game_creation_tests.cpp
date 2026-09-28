@@ -43,6 +43,11 @@ void verifyParty(std::size_t playerCount, std::size_t mafiaDivisor) {
             case mafia::RoleType::Maniac:
                 ++maniacCount;
                 break;
+            case mafia::RoleType::Eavesdropper:
+            case mafia::RoleType::Witness:
+            case mafia::RoleType::Bull:
+                assert(false);
+                break;
         }
     }
 
@@ -60,6 +65,30 @@ void verifyParty(std::size_t playerCount, std::size_t mafiaDivisor) {
     assert(commissionerCount == 1);
     assert(maniacCount == 1);
     assert(civilianCount == playerCount - expectedMafia - 3);
+}
+
+void verifyConfiguredParty() {
+    mafia::GameConfig config;
+    config.playerCount = 10;
+    config.roleConfigFile = "config/roles.yaml";
+    mafia::Game game(config);
+
+    std::size_t mafiaClanCount = 0;
+    std::size_t bullCount = 0;
+    std::size_t eavesdropperCount = 0;
+    std::size_t witnessCount = 0;
+    for (const mafia::PlayerState& player : game.snapshot().players) {
+        const mafia::RoleType role = game.roleOf(player.id);
+        mafiaClanCount += mafia::isMafiaRole(role);
+        bullCount += role == mafia::RoleType::Bull;
+        eavesdropperCount += role == mafia::RoleType::Eavesdropper;
+        witnessCount += role == mafia::RoleType::Witness;
+    }
+
+    assert(mafiaClanCount == 3);
+    assert(bullCount == 1);
+    assert(eavesdropperCount == 1);
+    assert(witnessCount == 1);
 }
 
 void verifyInvalidConfiguration() {
@@ -80,6 +109,30 @@ void verifyInvalidConfiguration() {
         invalidDivisor = true;
     }
     assert(invalidDivisor);
+
+    bool tooFewPlayersForConfiguredRoles = false;
+    try {
+        mafia::GameConfig config;
+        config.playerCount = 5;
+        config.roleConfigFile = "config/roles.yaml";
+        mafia::Game game(config);
+        static_cast<void>(game);
+    } catch (const std::invalid_argument&) {
+        tooFewPlayersForConfiguredRoles = true;
+    }
+    assert(tooFewPlayersForConfiguredRoles);
+
+    bool missingRoleConfig = false;
+    try {
+        mafia::GameConfig config;
+        config.playerCount = 10;
+        config.roleConfigFile = "config/missing.yaml";
+        mafia::Game game(config);
+        static_cast<void>(game);
+    } catch (const std::runtime_error&) {
+        missingRoleConfig = true;
+    }
+    assert(missingRoleConfig);
 }
 
 }  // namespace
@@ -88,5 +141,6 @@ int main() {
     verifyParty(5, 3);
     verifyParty(10, 3);
     verifyParty(20, 4);
+    verifyConfiguredParty();
     verifyInvalidConfiguration();
 }

@@ -25,6 +25,12 @@ std::string_view roleName(RoleType role) {
             return "Commissioner";
         case RoleType::Maniac:
             return "Maniac";
+        case RoleType::Eavesdropper:
+            return "Eavesdropper";
+        case RoleType::Witness:
+            return "Witness";
+        case RoleType::Bull:
+            return "Bull";
     }
     return "Unknown";
 }
@@ -43,6 +49,10 @@ std::string_view actionName(ActionType action) {
             return "shoots";
         case ActionType::ManiacKill:
             return "maniac targets";
+        case ActionType::Listen:
+            return "listens at";
+        case ActionType::Observe:
+            return "observes";
     }
     return "acts on";
 }
@@ -204,6 +214,35 @@ void GameLogger::logStep(
                 << (investigation.targetIsMafia ? "mafia" : "not mafia")
                 << "\n";
         }
+        for (const EavesdropResult& observation : result.eavesdropResults) {
+            output
+                << "Eavesdrop result for "
+                << playerLabel(observation.listener) << " at "
+                << playerLabel(observation.target) << ":";
+            if (observation.directedActions.empty()) {
+                output << " no directed actions";
+            } else {
+                for (const ActionType action : observation.directedActions) {
+                    output << ' ' << actionName(action);
+                }
+            }
+            output << "\n";
+        }
+        for (const WitnessResult& observation : result.witnessResults) {
+            output
+                << "Witness result for "
+                << playerLabel(observation.witness) << " watching "
+                << playerLabel(observation.target) << ":";
+            if (observation.attackers.empty()) {
+                output << " no attack";
+            } else {
+                output << " attackers";
+                for (const PlayerId attacker : observation.attackers) {
+                    output << ' ' << playerLabel(attacker);
+                }
+            }
+            output << "\n";
+        }
     }
 
     output << "Eliminated:";
@@ -264,6 +303,9 @@ void GameLogger::finishGame(
             << "  Checks: " << stats.checks << "\n"
             << "  Commissioner shots: " << stats.shots << "\n"
             << "  Maniac target selections: " << stats.maniacTargets << "\n";
+        output
+            << "  Eavesdrops: " << stats.listens << "\n"
+            << "  Witness observations: " << stats.observations << "\n";
     }
 
     if (!output) {
@@ -320,6 +362,12 @@ void GameLogger::updateStatistics(
                 break;
             case ActionType::ManiacKill:
                 ++actor.maniacTargets;
+                break;
+            case ActionType::Listen:
+                ++actor.listens;
+                break;
+            case ActionType::Observe:
+                ++actor.observations;
                 break;
         }
     }

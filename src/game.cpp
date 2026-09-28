@@ -12,6 +12,7 @@
 
 #include "mafia/console_strategy.hpp"
 #include "mafia/random_strategy.hpp"
+#include "mafia/role_config.hpp"
 #include "mafia/roles.hpp"
 
 namespace mafia {
@@ -29,6 +30,12 @@ std::string_view roleName(RoleType role) {
             return "Commissioner";
         case RoleType::Maniac:
             return "Maniac";
+        case RoleType::Eavesdropper:
+            return "Eavesdropper";
+        case RoleType::Witness:
+            return "Witness";
+        case RoleType::Bull:
+            return "Bull";
     }
     return "Unknown";
 }
@@ -47,6 +54,10 @@ std::string_view actionName(ActionType action) {
             return "shoots";
         case ActionType::ManiacKill:
             return "maniac targets";
+        case ActionType::Listen:
+            return "listens at";
+        case ActionType::Observe:
+            return "observes";
     }
     return "acts on";
 }
@@ -86,6 +97,8 @@ Game::Game(std::size_t playerCount, std::size_t mafiaDivisor)
           false,
           AnnouncementMode::Closed,
           LogLevel::Brief,
+          "logs",
+          "",
       }) {}
 
 Game::Game(GameConfig configValue)
@@ -103,12 +116,37 @@ Game::Game(GameConfig configValue)
         config.playerCount / config.mafiaDivisor
     );
 
+    const std::vector<RoleType> additionalRoles =
+        config.roleConfigFile.empty()
+        ? std::vector<RoleType>{}
+        : loadAdditionalRoles(config.roleConfigFile);
+    const bool bullEnabled =
+        std::ranges::find(additionalRoles, RoleType::Bull) !=
+        additionalRoles.end();
+
     std::vector<RoleType> roles;
     roles.reserve(config.playerCount);
-    roles.insert(roles.end(), mafiaCount, RoleType::Mafia);
+    roles.insert(
+        roles.end(),
+        mafiaCount - static_cast<std::size_t>(bullEnabled),
+        RoleType::Mafia
+    );
+    if (bullEnabled) {
+        roles.push_back(RoleType::Bull);
+    }
     roles.push_back(RoleType::Doctor);
     roles.push_back(RoleType::Commissioner);
     roles.push_back(RoleType::Maniac);
+    for (const RoleType role : additionalRoles) {
+        if (role != RoleType::Bull) {
+            roles.push_back(role);
+        }
+    }
+    if (roles.size() > config.playerCount) {
+        throw std::invalid_argument(
+            "Player count is too small for the configured roles"
+        );
+    }
     roles.insert(
         roles.end(),
         config.playerCount - roles.size(),
@@ -144,6 +182,15 @@ Game::Game(GameConfig configValue)
                 break;
             case RoleType::Maniac:
                 addPlayer<Maniac>(id, name, strategy);
+                break;
+            case RoleType::Eavesdropper:
+                addPlayer<Eavesdropper>(id, name, strategy);
+                break;
+            case RoleType::Witness:
+                addPlayer<Witness>(id, name, strategy);
+                break;
+            case RoleType::Bull:
+                addPlayer<Bull>(id, name, strategy);
                 break;
         }
     }
@@ -268,13 +315,13 @@ bool Game::checkVictory() {
     };
 
     const std::size_t mafiaCount = countLivingRoles([](RoleType role) {
-        return role == RoleType::Mafia;
+        return isMafiaRole(role);
     });
     const std::size_t maniacCount = countLivingRoles([](RoleType role) {
         return role == RoleType::Maniac;
     });
     const std::size_t civilianCount = countLivingRoles([](RoleType role) {
-        return role != RoleType::Mafia && role != RoleType::Maniac;
+        return !isMafiaRole(role) && role != RoleType::Maniac;
     });
 
     state.winner.reset();
@@ -308,7 +355,7 @@ void Game::announceGameStart() const {
         std::ranges::count_if(
             players,
             [](const SharedPtr<Player>& player) {
-                return player->role() == RoleType::Mafia;
+                return isMafiaRole(player->role());
             }
         )
     );
@@ -349,13 +396,13 @@ void Game::announceGameStart() const {
             << "You control " << playerName(*humanPlayerId) << ".\n"
             << "Your role: " << roleName(humanRole) << ".\n";
 
-        if (humanRole == RoleType::Mafia) {
+        if (isMafiaRole(humanRole)) {
             std::cout << "Your mafia teammates:";
             bool hasTeammates = false;
             for (const SharedPtr<Player>& player : players) {
                 if (
                     player->id() != *humanPlayerId &&
-                    player->role() == RoleType::Mafia
+                    isMafiaRole(player->role())
                 ) {
                     std::cout << ' ' << playerName(player->id());
                     hasTeammates = true;
@@ -414,6 +461,8 @@ void Game::announceStepResult(
         for (const Action& action : result.actions) {
             if (
                 action.type == ActionType::Check ||
+                action.type == ActionType::Listen ||
+                action.type == ActionType::Observe ||
                 action.type == ActionType::MafiaKill
             ) {
                 continue;
@@ -434,6 +483,40 @@ void Game::announceStepResult(
                 << playerName(investigation.target) << " is "
                 << (investigation.targetIsMafia ? "mafia" : "not mafia")
                 << ".\n";
+        }
+        for (const EavesdropResult& observation : result.eavesdropResults) {
+            if (observation.listener != *humanPlayerId) {
+                continue;
+            }
+            std::cout
+                << "You listened at " << playerName(observation.target)
+                << ": ";
+            if (observation.directedActions.empty()) {
+                std::cout << "no night action was directed there";
+            } else {
+                std::cout << "directed actions:";
+                for (const ActionType action : observation.directedActions) {
+                    std::cout << ' ' << actionName(action);
+                }
+            }
+            std::cout << ".\n";
+        }
+        for (const WitnessResult& observation : result.witnessResults) {
+            if (observation.witness != *humanPlayerId) {
+                continue;
+            }
+            std::cout
+                << "You observed " << playerName(observation.target)
+                << ": ";
+            if (observation.attackers.empty()) {
+                std::cout << "there was no attack";
+            } else {
+                std::cout << "attackers:";
+                for (const PlayerId attacker : observation.attackers) {
+                    std::cout << ' ' << playerName(attacker);
+                }
+            }
+            std::cout << ".\n";
         }
     }
 
@@ -459,6 +542,35 @@ void Game::announceStepResult(
                 << playerName(investigation.target) << " is "
                 << (investigation.targetIsMafia ? "mafia" : "not mafia")
                 << '\n';
+        }
+        for (const EavesdropResult& observation : result.eavesdropResults) {
+            std::cout
+                << "  Listen result for "
+                << playerName(observation.listener) << " at "
+                << playerName(observation.target) << ":";
+            if (observation.directedActions.empty()) {
+                std::cout << " no directed actions";
+            } else {
+                for (const ActionType action : observation.directedActions) {
+                    std::cout << ' ' << actionName(action);
+                }
+            }
+            std::cout << '\n';
+        }
+        for (const WitnessResult& observation : result.witnessResults) {
+            std::cout
+                << "  Witness result for "
+                << playerName(observation.witness) << " watching "
+                << playerName(observation.target) << ":";
+            if (observation.attackers.empty()) {
+                std::cout << " no attack";
+            } else {
+                std::cout << " attackers";
+                for (const PlayerId attacker : observation.attackers) {
+                    std::cout << ' ' << playerName(attacker);
+                }
+            }
+            std::cout << '\n';
         }
     }
 
@@ -524,7 +636,7 @@ std::string Game::disclosedStatus(PlayerId id) const {
     if (config.announcementMode == AnnouncementMode::Open) {
         return std::string(roleName(role));
     }
-    return role == RoleType::Mafia ? "mafia" : "not mafia";
+    return isMafiaRole(role) ? "mafia" : "not mafia";
 }
 
 }  // namespace mafia
