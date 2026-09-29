@@ -38,7 +38,14 @@ int main() {
         mafia::StepResult voting;
         voting.completedAt = std::chrono::system_clock::now();
         voting.actions = {
-            {1, 1, mafia::ActionType::Vote, 2},
+            {
+                1,
+                1,
+                mafia::ActionType::Vote,
+                2,
+                "Second looks suspicious.",
+                "Voting pattern",
+            },
             {1, 2, mafia::ActionType::Vote, 1},
         };
         voting.actionHistory = voting.actions;
@@ -72,6 +79,10 @@ int main() {
         assert(roundText.find("First (#1) votes against Second (#2)") !=
             std::string::npos);
         assert(roundText.find("Doctor protected: Second (#2)") !=
+            std::string::npos);
+        assert(roundText.find("Message: Second looks suspicious.") !=
+            std::string::npos);
+        assert(roundText.find("Reasoning: Voting pattern") !=
             std::string::npos);
 
         const std::string summaryText = readFile(summary);

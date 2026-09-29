@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <ranges>
 #include <stdexcept>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -41,6 +42,20 @@ bool isValidAction(
 ) {
     return contains(context.availableActions, action.type) &&
         contains(context.availableTargets, action.target);
+}
+
+std::string_view actionName(ActionType action) {
+    switch (action) {
+        case ActionType::Vote: return "vote";
+        case ActionType::MafiaKill: return "mafia kill";
+        case ActionType::Heal: return "heal";
+        case ActionType::Check: return "check";
+        case ActionType::Shoot: return "commissioner shot";
+        case ActionType::ManiacKill: return "maniac attack";
+        case ActionType::Listen: return "eavesdropping";
+        case ActionType::Observe: return "witness observation";
+    }
+    return "unknown action";
 }
 
 }  // namespace
@@ -94,6 +109,7 @@ StepResult Host::conductVoting(
                 GamePhase::Voting,
                 std::move(targets),
                 {ActionType::Vote},
+                makeAgentContext(*voter, state),
             },
         });
     }
@@ -234,6 +250,7 @@ StepResult Host::conductNight(
                 GamePhase::Night,
                 std::move(targets),
                 std::move(actionTypes),
+                makeAgentContext(*actor, state),
             },
         });
     }
@@ -323,6 +340,7 @@ StepResult Host::conductNight(
                         GamePhase::Night,
                         std::move(otherProposals),
                         {ActionType::MafiaKill},
+                        makeAgentContext(*assignment.player, state),
                     },
                 };
                 const CollectedActions discussed = collectActions(
@@ -495,6 +513,7 @@ StepResult Host::conductNight(
         attackedPlayers.end()
     );
     std::ranges::sort(result.eliminated);
+    rememberPrivateResults(result);
     return result;
 }
 
@@ -572,6 +591,76 @@ Player* Host::findPlayer(PlayerId id) const noexcept {
         }
     );
     return player == players_.end() ? nullptr : *player;
+}
+
+AgentContext Host::makeAgentContext(
+    const Player& player,
+    const GameSnapshot& state
+) const {
+    AgentContext context;
+    context.round = state.round;
+    context.selfId = player.id();
+    context.role = player.role();
+    context.publicHistory = state.publicHistory;
+    for (const PlayerState& current : state.players) {
+        if (current.alive) {
+            context.livingPlayers.push_back(current.id);
+        }
+    }
+
+    const auto remembered = privateKnowledge_.find(player.id());
+    if (remembered != privateKnowledge_.end()) {
+        context.privateKnowledge = remembered->second;
+    }
+    if (isMafiaRole(player.role())) {
+        std::string teammates = "Known mafia teammates:";
+        for (const Player* candidate : players_) {
+            if (
+                candidate->id() != player.id() &&
+                isMafiaRole(candidate->role())
+            ) {
+                teammates += " Player " + std::to_string(candidate->id());
+            }
+        }
+        context.privateKnowledge.push_back(std::move(teammates));
+    }
+    return context;
+}
+
+void Host::rememberPrivateResults(const StepResult& result) {
+    for (const InvestigationResult& investigation : result.investigations) {
+        privateKnowledge_[investigation.investigator].push_back(
+            "Investigation: Player " + std::to_string(investigation.target) +
+            (investigation.targetIsMafia ? " is mafia" : " is not mafia")
+        );
+    }
+    for (const EavesdropResult& observation : result.eavesdropResults) {
+        std::string fact =
+            "Eavesdropping at Player " + std::to_string(observation.target) +
+            ":";
+        if (observation.directedActions.empty()) {
+            fact += " no directed actions";
+        } else {
+            for (const ActionType action : observation.directedActions) {
+                fact += " " + std::string(actionName(action));
+            }
+        }
+        privateKnowledge_[observation.listener].push_back(std::move(fact));
+    }
+    for (const WitnessResult& observation : result.witnessResults) {
+        std::string fact =
+            "Witnessed at Player " + std::to_string(observation.target) +
+            ":";
+        if (observation.attackers.empty()) {
+            fact += " no attack";
+        } else {
+            fact += " attackers";
+            for (const PlayerId attacker : observation.attackers) {
+                fact += " Player " + std::to_string(attacker);
+            }
+        }
+        privateKnowledge_[observation.witness].push_back(std::move(fact));
+    }
 }
 
 }  // namespace mafia

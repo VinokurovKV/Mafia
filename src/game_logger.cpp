@@ -189,6 +189,12 @@ void GameLogger::logStep(
                 << "  " << playerLabel(action.actor) << ' '
                 << actionName(action.type) << ' '
                 << playerLabel(action.target) << "\n";
+            if (!action.message.empty()) {
+                output << "    Message: " << action.message << "\n";
+            }
+            if (!action.reasoning.empty()) {
+                output << "    Reasoning: " << action.reasoning << "\n";
+            }
         }
     }
 

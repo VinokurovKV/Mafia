@@ -4,6 +4,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 
 #include "mafia/role_concepts.hpp"
 
@@ -34,11 +35,17 @@ Action makeTargetedAction(
     const TurnContext& context,
     ActionType type
 ) {
+    StrategyDecision decision = strategy.decide(context);
+    if (decision.action != type) {
+        throw std::logic_error("Strategy selected an unavailable action");
+    }
     return Action{
         context.stepId,
         player.id(),
         type,
-        strategy.chooseTarget(context),
+        decision.target,
+        std::move(decision.message),
+        std::move(decision.reasoning),
     };
 }
 
@@ -94,7 +101,8 @@ RoleType Doctor::role() const noexcept {
 Action Commissioner::makeAction(const TurnContext& context) {
     ActionType actionType = ActionType::Vote;
     if (context.phase == GamePhase::Night) {
-        actionType = strategy().chooseActionType(context);
+        StrategyDecision decision = strategy().decide(context);
+        actionType = decision.action;
         if (
             actionType != ActionType::Check &&
             actionType != ActionType::Shoot
@@ -111,6 +119,14 @@ Action Commissioner::makeAction(const TurnContext& context) {
                 "Commissioner selected an unavailable action"
             );
         }
+        return Action{
+            context.stepId,
+            id(),
+            actionType,
+            decision.target,
+            std::move(decision.message),
+            std::move(decision.reasoning),
+        };
     } else if (context.phase != GamePhase::Voting) {
         throw std::logic_error(
             "Commissioner cannot act during the current phase"

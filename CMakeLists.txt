@@ -5,12 +5,14 @@ project(mafia LANGUAGES CXX)
 include(CTest)
 
 add_executable(mafia
+    src/ai_strategy.cpp
     src/command_line.cpp
     src/console_strategy.cpp
     src/game.cpp
     src/game_logger.cpp
     src/host.cpp
     src/main.cpp
+    src/openai_llm_client.cpp
     src/player.cpp
     src/random_strategy.cpp
     src/role_config.cpp
@@ -26,7 +28,27 @@ else()
     target_compile_options(mafia PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+if (WIN32)
+    target_link_libraries(mafia PRIVATE winhttp)
+endif()
+
 if (BUILD_TESTING)
+    add_executable(
+        ai_strategy_tests
+        tests/ai_strategy_tests.cpp
+        src/ai_strategy.cpp
+    )
+    target_include_directories(ai_strategy_tests PRIVATE include)
+    target_compile_features(ai_strategy_tests PRIVATE cxx_std_20)
+
+    if (MSVC)
+        target_compile_options(ai_strategy_tests PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(ai_strategy_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME ai_strategy_tests COMMAND ai_strategy_tests)
+
     add_executable(
         command_line_tests
         tests/command_line_tests.cpp
@@ -173,10 +195,12 @@ if (BUILD_TESTING)
     add_executable(
         game_voting_tests
         tests/game_voting_tests.cpp
+        src/ai_strategy.cpp
         src/console_strategy.cpp
         src/game.cpp
         src/game_logger.cpp
         src/host.cpp
+        src/openai_llm_client.cpp
         src/player.cpp
         src/random_strategy.cpp
         src/role_config.cpp
@@ -193,13 +217,19 @@ if (BUILD_TESTING)
 
     add_test(NAME game_voting_tests COMMAND game_voting_tests)
 
+    if (WIN32)
+        target_link_libraries(game_voting_tests PRIVATE winhttp)
+    endif()
+
     add_executable(
         game_cycle_tests
         tests/game_cycle_tests.cpp
+        src/ai_strategy.cpp
         src/console_strategy.cpp
         src/game.cpp
         src/game_logger.cpp
         src/host.cpp
+        src/openai_llm_client.cpp
         src/player.cpp
         src/random_strategy.cpp
         src/role_config.cpp
@@ -216,13 +246,19 @@ if (BUILD_TESTING)
 
     add_test(NAME game_cycle_tests COMMAND game_cycle_tests)
 
+    if (WIN32)
+        target_link_libraries(game_cycle_tests PRIVATE winhttp)
+    endif()
+
     add_executable(
         game_creation_tests
         tests/game_creation_tests.cpp
+        src/ai_strategy.cpp
         src/console_strategy.cpp
         src/game.cpp
         src/game_logger.cpp
         src/host.cpp
+        src/openai_llm_client.cpp
         src/player.cpp
         src/random_strategy.cpp
         src/role_config.cpp
@@ -238,4 +274,12 @@ if (BUILD_TESTING)
     endif()
 
     add_test(NAME game_creation_tests COMMAND game_creation_tests)
+    set_tests_properties(
+        game_creation_tests
+        PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+
+    if (WIN32)
+        target_link_libraries(game_creation_tests PRIVATE winhttp)
+    endif()
 endif()

@@ -44,8 +44,14 @@ private:
     );
     std::vector<Player*> livingPlayers(const GameSnapshot& state) const;
     Player* findPlayer(PlayerId id) const noexcept;
+    AgentContext makeAgentContext(
+        const Player& player,
+        const GameSnapshot& state
+    ) const;
+    void rememberPrivateResults(const StepResult& result);
 
     std::vector<Player*> players_;
+    std::unordered_map<PlayerId, std::vector<std::string>> privateKnowledge_;
 };
 
 }  // namespace mafia

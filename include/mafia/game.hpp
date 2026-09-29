@@ -72,6 +72,10 @@ private:
     ) const;
     void announceWinner() const;
     void startFileLogging();
+    void recordPublicHistory(
+        GamePhase phase,
+        const StepResult& result
+    );
     std::string playerName(PlayerId id) const;
     std::string disclosedStatus(PlayerId id) const;
 
@@ -81,6 +85,7 @@ private:
         {},
         std::nullopt,
         std::nullopt,
+        {},
     };
     Host host;
     std::vector<SharedPtr<Player>> players;

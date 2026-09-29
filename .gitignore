@@ -23,6 +23,8 @@
 
 # Runtime output
 /logs/
+.env
+.env.*
 
 # Editors and operating systems
 /.idea/

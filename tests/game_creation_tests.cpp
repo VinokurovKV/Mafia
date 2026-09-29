@@ -133,6 +133,20 @@ void verifyInvalidConfiguration() {
         missingRoleConfig = true;
     }
     assert(missingRoleConfig);
+
+    bool tooManyAiPlayers = false;
+    try {
+        mafia::GameConfig config;
+        config.playerCount = 5;
+        config.interactive = true;
+        config.aiEnabled = true;
+        config.aiPlayerCount = 5;
+        mafia::Game game(config);
+        static_cast<void>(game);
+    } catch (const std::invalid_argument&) {
+        tooManyAiPlayers = true;
+    }
+    assert(tooManyAiPlayers);
 }
 
 }  // namespace

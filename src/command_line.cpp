@@ -69,6 +69,70 @@ CommandLineOptions parseCommandLine(
             options.config.interactive = true;
             continue;
         }
+        if (argument == "--ai") {
+            options.config.aiEnabled = true;
+            continue;
+        }
+        if (argument == "--ai-players") {
+            if (++index == arguments.size()) {
+                throw std::invalid_argument("--ai-players requires a value");
+            }
+            options.config.aiPlayerCount = parseNumber(
+                arguments[index], "--ai-players"
+            );
+            if (options.config.aiPlayerCount == 0) {
+                throw std::invalid_argument("--ai-players must be positive");
+            }
+            options.config.aiEnabled = true;
+            continue;
+        }
+        if (argument == "--ai-base-url") {
+            if (++index == arguments.size() || arguments[index].empty()) {
+                throw std::invalid_argument("--ai-base-url requires a value");
+            }
+            options.config.aiBaseUrl = arguments[index];
+            continue;
+        }
+        if (argument == "--ai-model") {
+            if (++index == arguments.size() || arguments[index].empty()) {
+                throw std::invalid_argument("--ai-model requires a value");
+            }
+            options.config.aiModel = arguments[index];
+            continue;
+        }
+        if (argument == "--ai-api-key-env") {
+            if (++index == arguments.size() || arguments[index].empty()) {
+                throw std::invalid_argument(
+                    "--ai-api-key-env requires a value"
+                );
+            }
+            options.config.aiApiKeyEnvironment = arguments[index];
+            continue;
+        }
+        if (argument == "--ai-personality") {
+            if (++index == arguments.size() || arguments[index].empty()) {
+                throw std::invalid_argument(
+                    "--ai-personality requires a value"
+                );
+            }
+            options.config.aiPersonality = arguments[index];
+            continue;
+        }
+        if (argument == "--ai-timeout") {
+            if (++index == arguments.size()) {
+                throw std::invalid_argument("--ai-timeout requires a value");
+            }
+            const std::size_t timeout = parseNumber(
+                arguments[index], "--ai-timeout"
+            );
+            if (timeout == 0 || timeout > 300) {
+                throw std::invalid_argument(
+                    "--ai-timeout must be between 1 and 300 seconds"
+                );
+            }
+            options.config.aiTimeoutSeconds = static_cast<int>(timeout);
+            continue;
+        }
         if (argument == "--log-directory") {
             if (++index == arguments.size() || arguments[index].empty()) {
                 throw std::invalid_argument(
@@ -135,6 +199,13 @@ std::string commandLineUsage(std::string_view executableName) {
         "  --players N              Number of players, N > 4\n"
         "  --mafia-divisor K        Mafia divisor, K >= 3 (default: 3)\n"
         "  --interactive            Use one human-controlled player\n"
+        "  --ai                     Enable one AI-controlled player\n"
+        "  --ai-players N           Number of AI players (default: 1)\n"
+        "  --ai-base-url URL        OpenAI-compatible API base URL\n"
+        "  --ai-model NAME          Model name (default: auto)\n"
+        "  --ai-api-key-env NAME    Environment variable holding API key\n"
+        "  --ai-personality TEXT    AI player personality description\n"
+        "  --ai-timeout SECONDS     API timeout from 1 to 300 (default: 20)\n"
         "  --open-announcements     Reveal full roles and night details\n"
         "  --closed-announcements   Hide roles and night details (default)\n"
         "  --full-log               Print every accepted action\n"

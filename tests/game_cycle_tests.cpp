@@ -95,4 +95,5 @@ int main() {
     assert(!isAlive(snapshot, 4));
     assert(!isAlive(snapshot, 5));
     assert(snapshot.lastDoctorTarget == 2);
+    assert(!snapshot.publicHistory.empty());
 }

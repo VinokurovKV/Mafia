@@ -1,6 +1,7 @@
 #include "mafia/game.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <ctime>
 #include <iomanip>
 #include <iostream>
@@ -11,6 +12,8 @@
 #include <string>
 
 #include "mafia/console_strategy.hpp"
+#include "mafia/ai_strategy.hpp"
+#include "mafia/openai_llm_client.hpp"
 #include "mafia/random_strategy.hpp"
 #include "mafia/role_config.hpp"
 #include "mafia/roles.hpp"
@@ -88,18 +91,36 @@ std::string formatTime(std::chrono::system_clock::time_point value) {
     return output.str();
 }
 
+GameConfig basicConfig(
+    std::size_t playerCount,
+    std::size_t mafiaDivisor
+) {
+    GameConfig config;
+    config.playerCount = playerCount;
+    config.mafiaDivisor = mafiaDivisor;
+    return config;
+}
+
+std::string environmentValue(const std::string& name) {
+#ifdef _MSC_VER
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name.c_str()) != 0 || value == nullptr) {
+        return {};
+    }
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
+    const char* value = std::getenv(name.c_str());
+    return value == nullptr ? std::string{} : std::string(value);
+#endif
+}
+
 }  // namespace
 
 Game::Game(std::size_t playerCount, std::size_t mafiaDivisor)
-    : Game(GameConfig{
-          playerCount,
-          mafiaDivisor,
-          false,
-          AnnouncementMode::Closed,
-          LogLevel::Brief,
-          "logs",
-          "",
-      }) {}
+    : Game(basicConfig(playerCount, mafiaDivisor)) {}
 
 Game::Game(GameConfig configValue)
     : config(configValue),
@@ -109,6 +130,17 @@ Game::Game(GameConfig configValue)
     }
     if (config.mafiaDivisor < 3) {
         throw std::invalid_argument("Mafia divisor must be at least three");
+    }
+    const std::size_t availableAutomaticPlayers =
+        config.playerCount - static_cast<std::size_t>(config.interactive);
+    if (
+        config.aiEnabled &&
+        (config.aiPlayerCount == 0 ||
+         config.aiPlayerCount > availableAutomaticPlayers)
+    ) {
+        throw std::invalid_argument(
+            "AI player count exceeds the number of automatic players"
+        );
     }
 
     const std::size_t mafiaCount = std::max<std::size_t>(
@@ -156,6 +188,22 @@ Game::Game(GameConfig configValue)
     std::mt19937 generator(std::random_device{}());
     std::ranges::shuffle(roles, generator);
 
+    SharedPtr<LlmClient> aiClient;
+    SharedPtr<AiRequestBudget> aiBudget;
+    if (config.aiEnabled) {
+        const std::string apiKey = environmentValue(
+            config.aiApiKeyEnvironment
+        );
+        aiClient.reset(new OpenAiLlmClient({
+            config.aiBaseUrl,
+            config.aiModel,
+            apiKey,
+            config.aiTimeoutSeconds,
+        }));
+        aiBudget.reset(new AiRequestBudget(10));
+    }
+
+    std::size_t assignedAiPlayers = 0;
     for (std::size_t index = 0; index < roles.size(); ++index) {
         const PlayerId id = index + 1;
         const std::string name = "Player " + std::to_string(id);
@@ -164,7 +212,21 @@ Game::Game(GameConfig configValue)
             strategy.reset(new ConsoleStrategy(std::cin, std::cout));
             humanPlayerId = id;
         } else {
-            strategy.reset(new RandomStrategy());
+            SharedPtr<DecisionStrategy> fallback(new RandomStrategy());
+            if (
+                config.aiEnabled &&
+                assignedAiPlayers < config.aiPlayerCount
+            ) {
+                strategy.reset(new AiStrategy(
+                    aiClient,
+                    fallback,
+                    aiBudget,
+                    config.aiPersonality
+                ));
+                ++assignedAiPlayers;
+            } else {
+                strategy = std::move(fallback);
+            }
         }
 
         switch (roles[index]) {
@@ -219,6 +281,7 @@ void Game::run() {
             );
         }
         announceStepResult(GamePhase::Voting, votingResult);
+        recordPublicHistory(GamePhase::Voting, votingResult);
         applyStepResult(votingResult);
 
         if (checkVictory()) {
@@ -239,6 +302,7 @@ void Game::run() {
             );
         }
         announceStepResult(GamePhase::Night, nightResult);
+        recordPublicHistory(GamePhase::Night, nightResult);
         applyStepResult(nightResult);
 
         if (!checkVictory()) {
@@ -260,6 +324,7 @@ GameSnapshot Game::snapshot() const {
         state.players,
         state.lastDoctorTarget,
         state.winner,
+        state.publicHistory,
     };
 }
 
@@ -371,6 +436,11 @@ void Game::announceGameStart() const {
         << ", log: "
         << (config.logLevel == LogLevel::Full ? "full" : "brief")
         << "\n";
+    if (config.aiEnabled) {
+        std::cout
+            << "AI players: " << config.aiPlayerCount
+            << ", model: " << config.aiModel << "\n";
+    }
 
     if (gameLogger.has_value()) {
         std::cout
@@ -444,6 +514,16 @@ void Game::announceStepResult(
     const bool openAnnouncements =
         config.announcementMode == AnnouncementMode::Open;
 
+    if (phase == GamePhase::Voting) {
+        for (const Action& action : result.actions) {
+            if (!action.message.empty()) {
+                std::cout
+                    << playerName(action.actor) << ": "
+                    << action.message << '\n';
+            }
+        }
+    }
+
     if (fullLog) {
         std::cout
             << "Accepted actions (last received at "
@@ -456,6 +536,9 @@ void Game::announceStepResult(
                 << "  " << playerName(action.actor) << ' '
                 << actionName(action.type) << ' '
                 << playerName(action.target) << '\n';
+            if (!action.reasoning.empty()) {
+                std::cout << "    Reasoning: " << action.reasoning << '\n';
+            }
         }
     } else if (phase == GamePhase::Night && openAnnouncements) {
         for (const Action& action : result.actions) {
@@ -615,6 +698,42 @@ void Game::startFileLogging() {
 
     gameLogger.emplace(config.logDirectory);
     gameLogger->startGame(std::move(loggedPlayers));
+}
+
+void Game::recordPublicHistory(
+    GamePhase phase,
+    const StepResult& result
+) {
+    const std::string prefix = "Round " + std::to_string(state.round) + ": ";
+    if (phase == GamePhase::Voting) {
+        for (const Action& action : result.actions) {
+            if (!action.message.empty()) {
+                state.publicHistory.push_back(
+                    prefix + "Player " + std::to_string(action.actor) +
+                    " said: " + action.message
+                );
+            }
+            state.publicHistory.push_back(
+                prefix + "Player " + std::to_string(action.actor) +
+                " voted for Player " + std::to_string(action.target)
+            );
+        }
+    }
+    for (const PlayerId eliminated : result.eliminated) {
+        state.publicHistory.push_back(
+            prefix + "Player " + std::to_string(eliminated) +
+            (phase == GamePhase::Voting
+                ? " was eliminated by voting"
+                : " was eliminated during the night")
+        );
+    }
+    constexpr std::size_t maximumHistoryEntries = 100;
+    if (state.publicHistory.size() > maximumHistoryEntries) {
+        state.publicHistory.erase(
+            state.publicHistory.begin(),
+            state.publicHistory.end() - maximumHistoryEntries
+        );
+    }
 }
 
 std::string Game::playerName(PlayerId id) const {
