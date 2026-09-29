@@ -47,6 +47,34 @@ private:
     std::size_t requestCount_ = 0;
 };
 
+class DelayedLlmClient final : public mafia::LlmClient {
+public:
+    std::string complete(std::string_view) override {
+        throw std::logic_error("Synchronous completion must not be used");
+    }
+
+    void startCompletion(std::string prompt) override {
+        lastPrompt_ = std::move(prompt);
+        polls_ = 0;
+    }
+
+    bool completionReady() const noexcept override {
+        return polls_++ > 0;
+    }
+
+    std::string takeCompletion() override {
+        return R"({"action":"vote","message":"Ready.","target":4,"reasoning":"Async result."})";
+    }
+
+    const std::string& lastPrompt() const noexcept {
+        return lastPrompt_;
+    }
+
+private:
+    std::string lastPrompt_;
+    mutable int polls_ = 0;
+};
+
 class FixedFallback final : public mafia::DecisionStrategy {
 public:
     explicit FixedFallback(mafia::PlayerId target) : target_(target) {}
@@ -71,6 +99,7 @@ mafia::TurnContext votingContext(int round = 2) {
             mafia::RoleType::Commissioner,
             {},
             {2, 3, 4, 5},
+            {1, 6},
             {"Player 2 voted for Player 5"},
             {"Investigation: Player 4 is mafia"},
         },
@@ -100,6 +129,12 @@ void testValidResponseAndPrompt() {
     assert(fake->lastPrompt().find("Your role: Commissioner") != std::string::npos);
     assert(fake->lastPrompt().find("Investigation: Player 4 is mafia") != std::string::npos);
     assert(fake->lastPrompt().find("Valid voting targets: 2 4 5") != std::string::npos);
+    assert(fake->lastPrompt().find("Living players: 2 3 4 5") != std::string::npos);
+    assert(fake->lastPrompt().find("Eliminated players: 1 6") != std::string::npos);
+    assert(
+        fake->lastPrompt().find("lists are authoritative") !=
+        std::string::npos
+    );
 }
 
 void testInvalidResponseUsesFallback() {
@@ -154,6 +189,23 @@ void testNightActionNeverCallsLlm() {
     assert(fake->requestCount() == 0);
 }
 
+void testAsynchronousLlmSuspendsDecision() {
+    auto* delayed = new DelayedLlmClient;
+    mafia::AiStrategy strategy(
+        mafia::SharedPtr<mafia::LlmClient>(delayed),
+        mafia::SharedPtr<mafia::DecisionStrategy>(new FixedFallback(2)),
+        mafia::makeShared<mafia::AiRequestBudget>(10),
+        "Patient"
+    );
+
+    strategy.startDecision(votingContext());
+    assert(!strategy.decisionReady());
+    assert(strategy.decisionReady());
+    const mafia::StrategyDecision decision = strategy.takeDecision();
+    assert(decision.target == 4);
+    assert(!delayed->lastPrompt().empty());
+}
+
 }  // namespace
 
 int main() {
@@ -161,4 +213,5 @@ int main() {
     testInvalidResponseUsesFallback();
     testExceptionAndBudgetUseFallback();
     testNightActionNeverCallsLlm();
+    testAsynchronousLlmSuspendsDecision();
 }

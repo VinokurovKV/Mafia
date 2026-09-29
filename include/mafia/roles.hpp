@@ -10,7 +10,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = true;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 
@@ -20,7 +23,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = false;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 
@@ -30,7 +36,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = true;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 
@@ -40,7 +49,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = true;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 
@@ -50,7 +62,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = true;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 
@@ -60,7 +75,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = true;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 
@@ -70,7 +88,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = true;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 
@@ -80,7 +101,10 @@ public:
     static constexpr bool participatesInVoting = true;
     static constexpr bool actsAtNight = true;
 
-    Action makeAction(const TurnContext& context) override;
+    Action formAction(
+        const TurnContext& context,
+        StrategyDecision decision
+    ) override;
     RoleType role() const noexcept override;
 };
 

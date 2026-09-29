@@ -1,6 +1,11 @@
 #include "mafia/openai_llm_client.hpp"
 
+#include <algorithm>
+#include <array>
+#include <atomic>
 #include <charconv>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -12,6 +17,31 @@
 #endif
 
 namespace mafia {
+
+struct OpenAiAsyncState {
+#ifdef _WIN32
+    HINTERNET session = nullptr;
+    HINTERNET connection = nullptr;
+    HINTERNET request = nullptr;
+    std::array<char, 8192> buffer{};
+    std::string requestBody;
+    std::string responseBody;
+    std::string error;
+    DWORD status = 0;
+    mutable std::mutex mutex;
+    std::atomic_bool ready{false};
+
+    ~OpenAiAsyncState() {
+        if (request != nullptr) WinHttpCloseHandle(request);
+        if (connection != nullptr) WinHttpCloseHandle(connection);
+        if (session != nullptr) WinHttpCloseHandle(session);
+    }
+#else
+    std::string error;
+    std::atomic_bool ready{false};
+#endif
+};
+
 namespace {
 
 std::string escapeJson(std::string_view value) {
@@ -184,6 +214,228 @@ std::runtime_error winHttpError(std::string_view operation) {
     );
 }
 
+bool queuedOrPending(bool result) {
+    return result || GetLastError() == ERROR_IO_PENDING;
+}
+
+void finishWithError(OpenAiAsyncState& state, std::string error) noexcept {
+    {
+        std::lock_guard lock(state.mutex);
+        state.error = std::move(error);
+    }
+    state.ready.store(true, std::memory_order_release);
+}
+
+std::string lastWinHttpError(std::string_view operation, DWORD code) {
+    return std::string(operation) + " failed with WinHTTP error " +
+           std::to_string(code);
+}
+
+void CALLBACK asyncRequestCallback(
+    HINTERNET request,
+    DWORD_PTR context,
+    DWORD internetStatus,
+    void* statusInformation,
+    DWORD statusInformationLength
+) noexcept {
+    auto* state = reinterpret_cast<OpenAiAsyncState*>(context);
+    if (state == nullptr || state->ready.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    switch (internetStatus) {
+        case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE:
+            if (!queuedOrPending(WinHttpReceiveResponse(request, nullptr))) {
+                finishWithError(
+                    *state,
+                    lastWinHttpError("WinHttpReceiveResponse", GetLastError())
+                );
+            }
+            break;
+
+        case WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE: {
+            DWORD statusSize = sizeof(state->status);
+            if (!WinHttpQueryHeaders(
+                    request,
+                    WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                    WINHTTP_HEADER_NAME_BY_INDEX,
+                    &state->status,
+                    &statusSize,
+                    WINHTTP_NO_HEADER_INDEX
+                )) {
+                finishWithError(
+                    *state,
+                    lastWinHttpError("WinHttpQueryHeaders", GetLastError())
+                );
+                break;
+            }
+            if (!queuedOrPending(WinHttpQueryDataAvailable(request, nullptr))) {
+                finishWithError(
+                    *state,
+                    lastWinHttpError(
+                        "WinHttpQueryDataAvailable", GetLastError()
+                    )
+                );
+            }
+            break;
+        }
+
+        case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE: {
+            if (statusInformationLength < sizeof(DWORD)) {
+                finishWithError(*state, "WinHTTP returned invalid data length");
+                break;
+            }
+            const DWORD available = *static_cast<DWORD*>(statusInformation);
+            if (available == 0) {
+                state->ready.store(true, std::memory_order_release);
+                break;
+            }
+            const DWORD requested = static_cast<DWORD>(
+                (std::min)(
+                    static_cast<std::size_t>(available), state->buffer.size()
+                )
+            );
+            if (!queuedOrPending(WinHttpReadData(
+                    request, state->buffer.data(), requested, nullptr
+                ))) {
+                finishWithError(
+                    *state,
+                    lastWinHttpError("WinHttpReadData", GetLastError())
+                );
+            }
+            break;
+        }
+
+        case WINHTTP_CALLBACK_STATUS_READ_COMPLETE:
+            if (statusInformationLength > 0) {
+                std::lock_guard lock(state->mutex);
+                state->responseBody.append(
+                    static_cast<const char*>(statusInformation),
+                    statusInformationLength
+                );
+            }
+            if (!queuedOrPending(WinHttpQueryDataAvailable(request, nullptr))) {
+                finishWithError(
+                    *state,
+                    lastWinHttpError(
+                        "WinHttpQueryDataAvailable", GetLastError()
+                    )
+                );
+            }
+            break;
+
+        case WINHTTP_CALLBACK_STATUS_REQUEST_ERROR: {
+            DWORD code = GetLastError();
+            if (statusInformationLength >= sizeof(WINHTTP_ASYNC_RESULT)) {
+                code = static_cast<WINHTTP_ASYNC_RESULT*>(statusInformation)
+                           ->dwError;
+            }
+            finishWithError(
+                *state, lastWinHttpError("Asynchronous HTTP request", code)
+            );
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
+void startPostJson(
+    const OpenAiClientConfig& config,
+    OpenAiAsyncState& state
+) {
+    std::string endpoint = config.baseUrl;
+    while (!endpoint.empty() && endpoint.back() == '/') {
+        endpoint.pop_back();
+    }
+    endpoint += "/chat/completions";
+    const std::wstring wideEndpoint = widen(endpoint);
+
+    URL_COMPONENTS parts{};
+    parts.dwStructSize = sizeof(parts);
+    parts.dwHostNameLength = static_cast<DWORD>(-1);
+    parts.dwUrlPathLength = static_cast<DWORD>(-1);
+    parts.dwExtraInfoLength = static_cast<DWORD>(-1);
+    if (!WinHttpCrackUrl(wideEndpoint.c_str(), 0, 0, &parts)) {
+        throw winHttpError("WinHttpCrackUrl");
+    }
+    if (parts.nScheme != INTERNET_SCHEME_HTTPS) {
+        throw std::invalid_argument("AI base URL must use HTTPS");
+    }
+
+    const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
+    std::wstring path(parts.lpszUrlPath, parts.dwUrlPathLength);
+    if (parts.dwExtraInfoLength > 0) {
+        path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+    }
+
+    state.session = WinHttpOpen(
+        L"MafiaGame/1.0",
+        WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+        WINHTTP_NO_PROXY_NAME,
+        WINHTTP_NO_PROXY_BYPASS,
+        WINHTTP_FLAG_ASYNC
+    );
+    if (state.session == nullptr) throw winHttpError("WinHttpOpen");
+
+    const int timeout = config.timeoutSeconds * 1000;
+    if (!WinHttpSetTimeouts(
+            state.session, timeout, timeout, timeout, timeout
+        )) {
+        throw winHttpError("WinHttpSetTimeouts");
+    }
+
+    state.connection = WinHttpConnect(
+        state.session, host.c_str(), parts.nPort, 0
+    );
+    if (state.connection == nullptr) throw winHttpError("WinHttpConnect");
+
+    state.request = WinHttpOpenRequest(
+        state.connection,
+        L"POST",
+        path.c_str(),
+        nullptr,
+        WINHTTP_NO_REFERER,
+        WINHTTP_DEFAULT_ACCEPT_TYPES,
+        WINHTTP_FLAG_SECURE
+    );
+    if (state.request == nullptr) throw winHttpError("WinHttpOpenRequest");
+
+    const DWORD notifications =
+        WINHTTP_CALLBACK_FLAG_SENDREQUEST_COMPLETE |
+        WINHTTP_CALLBACK_FLAG_HEADERS_AVAILABLE |
+        WINHTTP_CALLBACK_FLAG_DATA_AVAILABLE |
+        WINHTTP_CALLBACK_FLAG_READ_COMPLETE |
+        WINHTTP_CALLBACK_FLAG_REQUEST_ERROR;
+    if (WinHttpSetStatusCallback(
+            state.request,
+            asyncRequestCallback,
+            notifications,
+            0
+        ) == WINHTTP_INVALID_STATUS_CALLBACK) {
+        throw winHttpError("WinHttpSetStatusCallback");
+    }
+
+    std::wstring headers = L"Content-Type: application/json\r\n";
+    if (!config.apiKey.empty()) {
+        headers += L"Authorization: Bearer ";
+        headers += widen(config.apiKey);
+        headers += L"\r\n";
+    }
+    if (!queuedOrPending(WinHttpSendRequest(
+            state.request,
+            headers.c_str(),
+            static_cast<DWORD>(headers.size()),
+            state.requestBody.data(),
+            static_cast<DWORD>(state.requestBody.size()),
+            static_cast<DWORD>(state.requestBody.size()),
+            reinterpret_cast<DWORD_PTR>(&state)
+        ))) {
+        throw winHttpError("WinHttpSendRequest");
+    }
+}
+
 std::string postJson(
     const OpenAiClientConfig& config,
     std::string_view body
@@ -317,6 +569,8 @@ OpenAiLlmClient::OpenAiLlmClient(OpenAiClientConfig config)
     }
 }
 
+OpenAiLlmClient::~OpenAiLlmClient() = default;
+
 std::string OpenAiLlmClient::complete(std::string_view prompt) {
 #ifdef _WIN32
     const std::string body =
@@ -331,6 +585,65 @@ std::string OpenAiLlmClient::complete(std::string_view prompt) {
         "OpenAiLlmClient currently requires Windows WinHTTP"
     );
 #endif
+}
+
+void OpenAiLlmClient::startCompletion(std::string prompt) {
+    if (asyncState_ &&
+        !asyncState_->ready.load(std::memory_order_acquire)) {
+        throw std::logic_error("An LLM completion is already in progress");
+    }
+
+    auto state = std::make_unique<OpenAiAsyncState>();
+#ifdef _WIN32
+    state->requestBody =
+        "{\"model\":\"" + escapeJson(config_.model) +
+        "\",\"messages\":[{\"role\":\"system\",\"content\":"
+        "\"Return only valid JSON.\"},{\"role\":\"user\",\"content\":\"" +
+        escapeJson(prompt) + "\"}],\"temperature\":0.7}";
+    startPostJson(config_, *state);
+#else
+    static_cast<void>(prompt);
+    state->error = "OpenAiLlmClient currently requires Windows WinHTTP";
+    state->ready.store(true, std::memory_order_release);
+#endif
+    asyncState_ = std::move(state);
+}
+
+bool OpenAiLlmClient::completionReady() const noexcept {
+    return asyncState_ &&
+           asyncState_->ready.load(std::memory_order_acquire);
+}
+
+std::string OpenAiLlmClient::takeCompletion() {
+    if (!completionReady()) {
+        throw std::logic_error("LLM completion is not ready");
+    }
+
+    std::string error;
+    std::string response;
+    unsigned long status = 0;
+#ifdef _WIN32
+    {
+        std::lock_guard lock(asyncState_->mutex);
+        error = asyncState_->error;
+        response = asyncState_->responseBody;
+        status = asyncState_->status;
+    }
+#else
+    error = asyncState_->error;
+#endif
+    asyncState_.reset();
+
+    if (!error.empty()) {
+        throw std::runtime_error(error);
+    }
+    if (status < 200 || status >= 300) {
+        throw std::runtime_error(
+            "LLM API returned HTTP " + std::to_string(status) + ": " +
+            response.substr(0, 300)
+        );
+    }
+    return extractContent(response);
 }
 
 }  // namespace mafia

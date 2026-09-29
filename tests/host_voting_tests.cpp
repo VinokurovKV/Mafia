@@ -57,6 +57,60 @@ private:
     bool interactive_;
 };
 
+class PolledStrategy final : public mafia::DecisionStrategy {
+public:
+    PolledStrategy(
+        mafia::PlayerId target,
+        int waits,
+        std::string label,
+        std::vector<std::string>& completionOrder
+    )
+        : target_(target),
+          waits_(waits),
+          label_(std::move(label)),
+          completionOrder_(completionOrder) {}
+
+    mafia::PlayerId chooseTarget(const mafia::TurnContext&) override {
+        return target_;
+    }
+
+    void startDecision(const mafia::TurnContext&) override {
+        polls_ = 0;
+    }
+
+    bool decisionReady() override {
+        return polls_++ >= waits_;
+    }
+
+    mafia::StrategyDecision takeDecision() override {
+        completionOrder_.push_back(label_);
+        return {mafia::ActionType::Vote, target_, {}, {}};
+    }
+
+private:
+    mafia::PlayerId target_;
+    int waits_;
+    int polls_ = 0;
+    std::string label_;
+    std::vector<std::string>& completionOrder_;
+};
+
+class ContextCapturingStrategy final : public mafia::DecisionStrategy {
+public:
+    explicit ContextCapturingStrategy(mafia::AgentContext& captured)
+        : captured_(captured) {}
+
+    mafia::PlayerId chooseTarget(
+        const mafia::TurnContext& context
+    ) override {
+        captured_ = context.agent;
+        return context.availableTargets.front();
+    }
+
+private:
+    mafia::AgentContext& captured_;
+};
+
 mafia::SharedPtr<mafia::DecisionStrategy> fixedTarget(
     mafia::PlayerId target
 ) {
@@ -164,10 +218,77 @@ void testAutomaticCoroutineRunsBeforeInteractiveCoroutine() {
     }));
 }
 
+void testWaitingCoroutineDoesNotBlockOtherPlayers() {
+    mafia::Host host;
+    std::vector<std::string> completionOrder;
+    mafia::Civilian slow(
+        1,
+        "Slow",
+        mafia::SharedPtr<mafia::DecisionStrategy>(new PolledStrategy(
+            2, 2, "slow", completionOrder
+        ))
+    );
+    mafia::Civilian ready(
+        2,
+        "Ready",
+        mafia::SharedPtr<mafia::DecisionStrategy>(new PolledStrategy(
+            1, 0, "ready", completionOrder
+        ))
+    );
+    host.registerPlayer(slow);
+    host.registerPlayer(ready);
+
+    const mafia::GameSnapshot snapshot{
+        1,
+        mafia::GamePhase::Voting,
+        {{1, true}, {2, true}},
+        std::nullopt,
+        std::nullopt,
+    };
+    static_cast<void>(host.conductStep(
+        {103, mafia::GamePhase::Voting}, snapshot
+    ));
+
+    assert((completionOrder == std::vector<std::string>{"ready", "slow"}));
+}
+
+void testAgentContextContainsEliminatedPlayers() {
+    mafia::Host host;
+    mafia::AgentContext captured;
+    mafia::Civilian first(
+        1,
+        "First",
+        mafia::SharedPtr<mafia::DecisionStrategy>(
+            new ContextCapturingStrategy(captured)
+        )
+    );
+    mafia::Civilian second(2, "Second", fixedTarget(1));
+    host.registerPlayer(first);
+    host.registerPlayer(second);
+
+    const mafia::GameSnapshot snapshot{
+        2,
+        mafia::GamePhase::Voting,
+        {{1, true}, {2, true}, {3, false}, {4, false}},
+        std::nullopt,
+        std::nullopt,
+    };
+    static_cast<void>(host.conductStep(
+        {104, mafia::GamePhase::Voting}, snapshot
+    ));
+
+    assert((captured.livingPlayers ==
+            std::vector<mafia::PlayerId>{1, 2}));
+    assert((captured.eliminatedPlayers ==
+            std::vector<mafia::PlayerId>{3, 4}));
+}
+
 }  // namespace
 
 int main() {
     testPlayerWithMostVotesIsEliminated();
     testTieEliminatesNobody();
     testAutomaticCoroutineRunsBeforeInteractiveCoroutine();
+    testWaitingCoroutineDoesNotBlockOtherPlayers();
+    testAgentContextContainsEliminatedPlayers();
 }

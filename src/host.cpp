@@ -4,6 +4,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <utility>
 
@@ -528,40 +529,55 @@ Host::CollectedActions Host::collectActions(
     CollectedActions collected;
     collected.completedAt = std::chrono::system_clock::now();
 
-    const auto resumePlayers = [&](bool interactive) {
-        auto scheduled = assignments | std::views::filter(
-            [interactive](const TurnAssignment& assignment) {
-                return assignment.player->isInteractive() == interactive;
-            }
-        );
+    std::vector<bool> completed(assignments.size(), false);
+    std::size_t remaining = assignments.size();
+    while (remaining > 0) {
+        bool madeProgress = false;
+        for (const bool interactive : {false, true}) {
+            for (std::size_t index = 0; index < assignments.size(); ++index) {
+                if (completed[index]) {
+                    continue;
+                }
+                const TurnAssignment& assignment = assignments[index];
+                if (assignment.player->isInteractive() != interactive) {
+                    continue;
+                }
 
-        for (const TurnAssignment& assignment : scheduled) {
-            Action action = assignment.player->performTurn();
-            if (
-                action.stepId != request.id ||
-                action.actor != assignment.player->id()
-            ) {
-                throw std::logic_error(
-                    "Player coroutine returned an action for another turn"
-                );
-            }
+                std::optional<Action> polled = assignment.player->pollTurn();
+                if (!polled.has_value()) {
+                    continue;
+                }
+                Action action = std::move(*polled);
+                if (
+                    action.stepId != request.id ||
+                    action.actor != assignment.player->id()
+                ) {
+                    throw std::logic_error(
+                        "Player coroutine returned an action for another turn"
+                    );
+                }
 
-            const auto [position, inserted] = collected.actions.try_emplace(
-                action.actor,
-                std::move(action)
-            );
-            static_cast<void>(position);
-            if (!inserted) {
-                throw std::logic_error(
-                    "Player coroutine submitted more than one action"
-                );
+                const auto [position, inserted] =
+                    collected.actions.try_emplace(
+                        action.actor,
+                        std::move(action)
+                    );
+                static_cast<void>(position);
+                if (!inserted) {
+                    throw std::logic_error(
+                        "Player coroutine submitted more than one action"
+                    );
+                }
+                collected.completedAt = std::chrono::system_clock::now();
+                completed[index] = true;
+                --remaining;
+                madeProgress = true;
             }
-            collected.completedAt = std::chrono::system_clock::now();
         }
-    };
-
-    resumePlayers(false);
-    resumePlayers(true);
+        if (!madeProgress && remaining > 0) {
+            std::this_thread::yield();
+        }
+    }
     return collected;
 }
 
@@ -605,6 +621,8 @@ AgentContext Host::makeAgentContext(
     for (const PlayerState& current : state.players) {
         if (current.alive) {
             context.livingPlayers.push_back(current.id);
+        } else {
+            context.eliminatedPlayers.push_back(current.id);
         }
     }
 

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 namespace mafia {
@@ -192,26 +193,92 @@ AiStrategy::AiStrategy(
 }
 
 StrategyDecision AiStrategy::decide(const TurnContext& context) {
+    startDecision(context);
+    while (!decisionReady()) {
+        std::this_thread::yield();
+    }
+    return takeDecision();
+}
+
+void AiStrategy::startDecision(const TurnContext& context) {
+    if (pendingMode_ != PendingMode::None) {
+        throw std::logic_error("AiStrategy already has a pending decision");
+    }
+    pendingContext_ = context;
+
     if (context.phase != GamePhase::Voting) {
-        return fallback_->decide(context);
+        startFallback(context, {});
+        return;
     }
     if (!budget_->tryConsume(context.agent.round)) {
-        return fallbackDecision(context, "request limit reached");
+        startFallback(context, "request limit reached");
+        return;
+    }
+    try {
+        client_->startCompletion(buildPrompt(context));
+        pendingMode_ = PendingMode::Llm;
+    } catch (const std::exception& error) {
+        startFallback(context, error.what());
+    } catch (...) {
+        startFallback(context, "unknown LLM failure");
+    }
+}
+
+bool AiStrategy::decisionReady() {
+    if (completedDecision_.has_value()) {
+        return true;
+    }
+    if (!pendingContext_.has_value()) {
+        throw std::logic_error("AiStrategy has no pending decision");
     }
 
-    try {
-        StrategyDecision decision = parseResponse(
-            client_->complete(buildPrompt(context))
-        );
-        if (!isValid(decision, context)) {
-            return fallbackDecision(context, "invalid model decision");
+    if (pendingMode_ == PendingMode::Llm) {
+        if (!client_->completionReady()) {
+            return false;
         }
-        return decision;
-    } catch (const std::exception& error) {
-        return fallbackDecision(context, error.what());
-    } catch (...) {
-        return fallbackDecision(context, "unknown LLM failure");
+        try {
+            StrategyDecision decision = parseResponse(
+                client_->takeCompletion()
+            );
+            if (!isValid(decision, *pendingContext_)) {
+                startFallback(*pendingContext_, "invalid model decision");
+            } else {
+                completedDecision_ = std::move(decision);
+            }
+        } catch (const std::exception& error) {
+            startFallback(*pendingContext_, error.what());
+        } catch (...) {
+            startFallback(*pendingContext_, "unknown LLM failure");
+        }
     }
+
+    if (pendingMode_ == PendingMode::Fallback) {
+        if (!fallback_->decisionReady()) {
+            return false;
+        }
+        StrategyDecision decision = fallback_->takeDecision();
+        if (!fallbackReason_.empty()) {
+            if (decision.message.empty()) {
+                decision.message =
+                    "I do not have enough reliable information yet.";
+            }
+            decision.reasoning = "AI fallback: " + fallbackReason_;
+        }
+        completedDecision_ = std::move(decision);
+    }
+    return completedDecision_.has_value();
+}
+
+StrategyDecision AiStrategy::takeDecision() {
+    if (!completedDecision_.has_value()) {
+        throw std::logic_error("AI decision is not ready");
+    }
+    StrategyDecision decision = std::move(*completedDecision_);
+    completedDecision_.reset();
+    pendingContext_.reset();
+    pendingMode_ = PendingMode::None;
+    fallbackReason_.clear();
+    return decision;
 }
 
 PlayerId AiStrategy::chooseTarget(const TurnContext& context) {
@@ -236,6 +303,14 @@ std::string AiStrategy::buildPrompt(const TurnContext& context) const {
         << "\nLiving players:";
     for (const PlayerId id : agent.livingPlayers) {
         prompt << ' ' << id;
+    }
+    prompt << "\nEliminated players:";
+    if (agent.eliminatedPlayers.empty()) {
+        prompt << " none";
+    } else {
+        for (const PlayerId id : agent.eliminatedPlayers) {
+            prompt << ' ' << id;
+        }
     }
     prompt << "\nValid voting targets:";
     for (const PlayerId id : context.availableTargets) {
@@ -262,6 +337,9 @@ std::string AiStrategy::buildPrompt(const TurnContext& context) const {
         << "{\"action\":\"vote\",\"message\":\"...\","
         << "\"target\":NUMBER,\"reasoning\":\"...\"}. "
         << "The target must be one of the valid voting targets. "
+        << "The living and eliminated player lists are authoritative. "
+        << "Never describe a living player as eliminated or an eliminated "
+        << "player as alive. "
         << "Do not reveal your role or private knowledge in the message.";
     return prompt.str();
 }
@@ -335,16 +413,13 @@ bool AiStrategy::isValid(
         !decision.reasoning.empty() && decision.reasoning.size() <= 1000;
 }
 
-StrategyDecision AiStrategy::fallbackDecision(
+void AiStrategy::startFallback(
     const TurnContext& context,
     std::string reason
 ) {
-    StrategyDecision decision = fallback_->decide(context);
-    if (decision.message.empty()) {
-        decision.message = "I do not have enough reliable information yet.";
-    }
-    decision.reasoning = "AI fallback: " + std::move(reason);
-    return decision;
+    pendingMode_ = PendingMode::Fallback;
+    fallbackReason_ = std::move(reason);
+    fallback_->startDecision(context);
 }
 
 }  // namespace mafia

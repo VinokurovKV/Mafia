@@ -71,6 +71,25 @@ void testClosedInputUsesSafeFallback() {
     assert(output.str().find("Input closed") != std::string::npos);
 }
 
+void testAsynchronousDecisionIsPolledInStages() {
+    std::istringstream input("2\n3\n");
+    std::ostringstream output;
+    mafia::ConsoleStrategy strategy(input, output);
+    const mafia::TurnContext context{
+        5,
+        mafia::GamePhase::Night,
+        {2, 3},
+        {mafia::ActionType::Check, mafia::ActionType::Shoot},
+    };
+
+    strategy.startDecision(context);
+    assert(!strategy.decisionReady());
+    assert(strategy.decisionReady());
+    const mafia::StrategyDecision decision = strategy.takeDecision();
+    assert(decision.action == mafia::ActionType::Shoot);
+    assert(decision.target == 3);
+}
+
 }  // namespace
 
 int main() {
@@ -78,4 +97,5 @@ int main() {
     testCommissionerActionCanBeSelected();
     testSingleTargetNeedsNoInput();
     testClosedInputUsesSafeFallback();
+    testAsynchronousDecisionIsPolledInStages();
 }

@@ -77,6 +77,10 @@ public:
         }
     }
 
+    bool hasAction() const noexcept {
+        return handle_ && handle_.promise().yieldedAction.has_value();
+    }
+
     Action takeAction() {
         if (!handle_ || !handle_.promise().yieldedAction.has_value()) {
             throw std::logic_error("Player coroutine did not yield an action");

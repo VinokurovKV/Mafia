@@ -28,18 +28,25 @@ bool Player::isInteractive() const noexcept {
 }
 
 void Player::requestTurn(TurnContext context) {
-    if (pendingTurn_.has_value()) {
+    if (pendingTurn_.has_value() || turnInProgress_) {
         throw std::logic_error("Player already has a pending turn");
     }
     pendingTurn_ = std::move(context);
 }
 
-Action Player::performTurn() {
-    if (!pendingTurn_.has_value()) {
+Action Player::makeAction(const TurnContext& context) {
+    return formAction(context, strategy_->decide(context));
+}
+
+std::optional<Action> Player::pollTurn() {
+    if (!pendingTurn_.has_value() && !turnInProgress_) {
         throw std::logic_error("Player has no pending turn");
     }
 
     actionTask_.resume();
+    if (!actionTask_.hasAction()) {
+        return std::nullopt;
+    }
     return actionTask_.takeAction();
 }
 
@@ -51,7 +58,17 @@ PlayerTask Player::actionLoop() {
 
         TurnContext context = std::move(*pendingTurn_);
         pendingTurn_.reset();
-        co_yield makeAction(context);
+        turnInProgress_ = true;
+        strategy_->startDecision(context);
+        while (!strategy_->decisionReady()) {
+            co_await std::suspend_always{};
+        }
+        Action action = formAction(
+            context,
+            strategy_->takeDecision()
+        );
+        turnInProgress_ = false;
+        co_yield action;
     }
 }
 

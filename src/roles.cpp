@@ -31,11 +31,10 @@ ActionType actionTypeForPhase(
 template <PlayerRole Role>
 Action makeTargetedAction(
     Role& player,
-    DecisionStrategy& strategy,
     const TurnContext& context,
-    ActionType type
+    ActionType type,
+    StrategyDecision decision
 ) {
-    StrategyDecision decision = strategy.decide(context);
     if (decision.action != type) {
         throw std::logic_error("Strategy selected an unavailable action");
     }
@@ -51,16 +50,19 @@ Action makeTargetedAction(
 
 }  // namespace
 
-Action Mafia::makeAction(const TurnContext& context) {
+Action Mafia::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
         actionTypeForPhase(
             context.phase,
             ActionType::MafiaKill,
             "Mafia"
-        )
+        ),
+        std::move(decision)
     );
 }
 
@@ -68,16 +70,19 @@ RoleType Mafia::role() const noexcept {
     return RoleType::Mafia;
 }
 
-Action Civilian::makeAction(const TurnContext& context) {
+Action Civilian::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     if (context.phase != GamePhase::Voting) {
         throw std::logic_error("Civilian can act only during voting");
     }
 
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
-        ActionType::Vote
+        ActionType::Vote,
+        std::move(decision)
     );
 }
 
@@ -85,12 +90,15 @@ RoleType Civilian::role() const noexcept {
     return RoleType::Civilian;
 }
 
-Action Doctor::makeAction(const TurnContext& context) {
+Action Doctor::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
-        actionTypeForPhase(context.phase, ActionType::Heal, "Doctor")
+        actionTypeForPhase(context.phase, ActionType::Heal, "Doctor"),
+        std::move(decision)
     );
 }
 
@@ -98,10 +106,12 @@ RoleType Doctor::role() const noexcept {
     return RoleType::Doctor;
 }
 
-Action Commissioner::makeAction(const TurnContext& context) {
+Action Commissioner::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     ActionType actionType = ActionType::Vote;
     if (context.phase == GamePhase::Night) {
-        StrategyDecision decision = strategy().decide(context);
         actionType = decision.action;
         if (
             actionType != ActionType::Check &&
@@ -135,9 +145,9 @@ Action Commissioner::makeAction(const TurnContext& context) {
 
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
-        actionType
+        actionType,
+        std::move(decision)
     );
 }
 
@@ -145,16 +155,19 @@ RoleType Commissioner::role() const noexcept {
     return RoleType::Commissioner;
 }
 
-Action Maniac::makeAction(const TurnContext& context) {
+Action Maniac::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
         actionTypeForPhase(
             context.phase,
             ActionType::ManiacKill,
             "Maniac"
-        )
+        ),
+        std::move(decision)
     );
 }
 
@@ -162,16 +175,19 @@ RoleType Maniac::role() const noexcept {
     return RoleType::Maniac;
 }
 
-Action Eavesdropper::makeAction(const TurnContext& context) {
+Action Eavesdropper::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
         actionTypeForPhase(
             context.phase,
             ActionType::Listen,
             "Eavesdropper"
-        )
+        ),
+        std::move(decision)
     );
 }
 
@@ -179,16 +195,19 @@ RoleType Eavesdropper::role() const noexcept {
     return RoleType::Eavesdropper;
 }
 
-Action Witness::makeAction(const TurnContext& context) {
+Action Witness::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
         actionTypeForPhase(
             context.phase,
             ActionType::Observe,
             "Witness"
-        )
+        ),
+        std::move(decision)
     );
 }
 
@@ -196,16 +215,19 @@ RoleType Witness::role() const noexcept {
     return RoleType::Witness;
 }
 
-Action Bull::makeAction(const TurnContext& context) {
+Action Bull::formAction(
+    const TurnContext& context,
+    StrategyDecision decision
+) {
     return makeTargetedAction(
         *this,
-        strategy(),
         context,
         actionTypeForPhase(
             context.phase,
             ActionType::MafiaKill,
             "Bull"
-        )
+        ),
+        std::move(decision)
     );
 }
 

@@ -128,6 +128,7 @@ struct AgentContext {
     RoleType role = RoleType::Civilian;
     std::string personality;
     std::vector<PlayerId> livingPlayers;
+    std::vector<PlayerId> eliminatedPlayers;
     std::vector<std::string> publicHistory;
     std::vector<std::string> privateKnowledge;
 };
